@@ -1,6 +1,13 @@
 # Compiled class file
 *.class
 
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+
 # Log file
 *.log
 
