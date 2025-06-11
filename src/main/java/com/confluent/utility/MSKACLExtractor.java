@@ -146,6 +146,7 @@ public class MSKACLExtractor {
             this.adminClient = AdminClient.create(config);
             logger.info("Successfully connected to MSK cluster");
         } catch (Exception e) {
+            e.printStackTrace();
             logger.error("Failed to connect to Kafka cluster: {}", e.getMessage());
             throw new MSKACLExtractorException("Failed to connect to Kafka cluster", e);
         }
