@@ -25,7 +25,7 @@ ehthumbs.db
 .mtj.tmp/
 
 # Package Files #
-*.jar
+
 *.war
 *.nar
 *.ear
