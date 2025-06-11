@@ -69,9 +69,17 @@ print_usage() {
 }
 
 check_prerequisites() {
-    # Check if JAR file exists
-    if [ ! -f "$JAR_FILE" ]; then
-        echo -e "${RED}❌ Error: JAR file not found: $JAR_FILE${NC}"
+    # Check if JAR file exists (prefer release version)
+    if [ -f "$RELEASE_JAR" ]; then
+        JAR_FILE="$RELEASE_JAR"
+        echo -e "${GREEN}✅ Using JAR from release directory${NC}"
+    elif [ -f "$JAR_FILE" ]; then
+        # Use target version if release doesn't exist
+        echo -e "${YELLOW}ℹ️  Using JAR from target directory (consider running './build.sh' to update release)${NC}"
+    else
+        echo -e "${RED}❌ Error: JAR file not found in either location:${NC}"
+        echo -e "${RED}   - $RELEASE_JAR${NC}"
+        echo -e "${RED}   - $JAR_FILE${NC}"
         echo -e "${YELLOW}🔨 Please run './build.sh' first to build the application.${NC}"
         exit 1
     fi
