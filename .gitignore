@@ -1,5 +1,12 @@
 # Compiled class file
 *.class
+target/
+.idea/
+.vscode/
+.cursor/
+.cursorrules
+.cursorignore
+
 
 # macOS
 .DS_Store
