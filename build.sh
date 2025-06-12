@@ -63,40 +63,28 @@ if [ $? -eq 0 ]; then
     RELEASE_DIR="release"
     mkdir -p "$RELEASE_DIR"
     
-    # Copy JAR to release folder
-    JAR_FILE="target/acl-to-cc-rbac-utility-1.0.0.jar"
-    RELEASE_JAR="$RELEASE_DIR/acl-to-cc-rbac-utility-1.0.0.jar"
+    # Remove any existing JARs from release folder
+    rm -f "$RELEASE_DIR"/*.jar
+    
+    # Copy JAR to release folder with consistent name
+    JAR_FILE="target/acl-to-rbac-converter.jar"
+    RELEASE_JAR="$RELEASE_DIR/acl-to-rbac-converter.jar"
     
     echo "📦 Copying JAR to release folder..."
     cp "$JAR_FILE" "$RELEASE_JAR"
     
     if [ $? -eq 0 ]; then
         echo "✅ JAR copied to: $RELEASE_JAR"
-        
-        # Create a timestamped copy as well
-        TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-        TIMESTAMPED_JAR="$RELEASE_DIR/acl-to-cc-rbac-utility-1.0.0-$TIMESTAMP.jar"
-        cp "$JAR_FILE" "$TIMESTAMPED_JAR"
-        echo "📅 Timestamped copy created: $TIMESTAMPED_JAR"
-        
-        # Create latest symlink (if supported)
-        if command -v ln &> /dev/null; then
-            cd "$RELEASE_DIR"
-            ln -sf "acl-to-cc-rbac-utility-1.0.0.jar" "acl-to-cc-rbac-utility-latest.jar"
-            cd - > /dev/null
-            echo "🔗 Latest symlink created: $RELEASE_DIR/acl-to-cc-rbac-utility-latest.jar"
-        fi
     else
         echo "⚠️  Warning: Failed to copy JAR to release folder"
     fi
     
     echo ""
     echo "🚀 You can now run the utility with:"
-    echo "   ./run.sh --help"
+    echo "   ./scripts/run.sh --help"
     echo "   or"
-    echo "   java -jar $RELEASE_JAR --help"
-    echo "   or"
-    echo "   java -jar target/acl-to-cc-rbac-utility-1.0.0.jar --help"
+    echo  $RELEASE_JAR
+    echo "   java -jar $JAR_FILE --help"
 else
     echo "❌ Build failed!"
     exit 1
