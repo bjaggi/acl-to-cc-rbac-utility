@@ -71,9 +71,9 @@ public class MSKACLExtractor {
     }
 
     /**
-     * Get bootstrap servers from cluster info
+     * Get bootstrap servers from cluster info based on security protocol and SASL mechanism
      */
-    public String getBootstrapServers() throws MSKACLExtractorException {
+    public String getBootstrapServers(String securityProtocol, String saslMechanism) throws MSKACLExtractorException {
         try {
             GetBootstrapBrokersRequest request = GetBootstrapBrokersRequest.builder()
                     .clusterArn(clusterArn)
@@ -81,16 +81,38 @@ public class MSKACLExtractor {
             
             GetBootstrapBrokersResponse response = mskClient.getBootstrapBrokers(request);
             
-            // Try to get TLS bootstrap servers first, then others
-            String bootstrapServers = response.bootstrapBrokerStringTls();
-            if (bootstrapServers == null || bootstrapServers.isEmpty()) {
+            String bootstrapServers = null;
+            
+            // Select bootstrap servers based on security protocol and SASL mechanism
+            if ("SASL_SSL".equals(securityProtocol)) {
+                if ("AWS_MSK_IAM".equals(saslMechanism)) {
+                    bootstrapServers = response.bootstrapBrokerStringSaslIam();
+                    logger.info("Using SASL_IAM bootstrap servers for AWS_MSK_IAM");
+                } else if (saslMechanism != null && saslMechanism.startsWith("SCRAM")) {
+                    bootstrapServers = response.bootstrapBrokerStringSaslScram();
+                    logger.info("Using SASL_SCRAM bootstrap servers for SCRAM mechanism");
+                }
+            } else if ("SSL".equals(securityProtocol)) {
+                bootstrapServers = response.bootstrapBrokerStringTls();
+                logger.info("Using TLS bootstrap servers for SSL protocol");
+            } else if ("PLAINTEXT".equals(securityProtocol)) {
                 bootstrapServers = response.bootstrapBrokerString();
+                logger.info("Using plaintext bootstrap servers");
             }
+            
+            // Fallback logic if specific type not available
             if (bootstrapServers == null || bootstrapServers.isEmpty()) {
-                bootstrapServers = response.bootstrapBrokerStringSaslScram();
-            }
-            if (bootstrapServers == null || bootstrapServers.isEmpty()) {
+                logger.warn("Preferred bootstrap servers not available, falling back to alternatives");
                 bootstrapServers = response.bootstrapBrokerStringSaslIam();
+                if (bootstrapServers == null || bootstrapServers.isEmpty()) {
+                    bootstrapServers = response.bootstrapBrokerStringTls();
+                }
+                if (bootstrapServers == null || bootstrapServers.isEmpty()) {
+                    bootstrapServers = response.bootstrapBrokerStringSaslScram();
+                }
+                if (bootstrapServers == null || bootstrapServers.isEmpty()) {
+                    bootstrapServers = response.bootstrapBrokerString();
+                }
             }
             
             if (bootstrapServers == null || bootstrapServers.isEmpty()) {
@@ -111,7 +133,7 @@ public class MSKACLExtractor {
      */
     public void connectToCluster(String securityProtocol, String saslMechanism, 
                                 String saslUsername, String saslPassword) throws MSKACLExtractorException {
-        String bootstrapServers = getBootstrapServers();
+        String bootstrapServers = getBootstrapServers(securityProtocol, saslMechanism);
         
         Properties config = new Properties();
         config.put("bootstrap.servers", bootstrapServers);
@@ -120,8 +142,21 @@ public class MSKACLExtractor {
         
         // Configure SSL
         if ("SSL".equals(securityProtocol) || "SASL_SSL".equals(securityProtocol)) {
-            config.put("ssl.truststore.location", System.getProperty("javax.net.ssl.trustStore", ""));
-            config.put("ssl.truststore.password", System.getProperty("javax.net.ssl.trustStorePassword", ""));
+            String trustStoreLocation = System.getProperty("javax.net.ssl.trustStore", "");
+            String trustStorePassword = System.getProperty("javax.net.ssl.trustStorePassword", "");
+            
+            // Only set truststore properties if they are non-empty and point to files (not directories)
+            if (trustStoreLocation != null && !trustStoreLocation.isEmpty()) {
+                java.io.File trustStoreFile = new java.io.File(trustStoreLocation);
+                if (trustStoreFile.exists() && trustStoreFile.isFile()) {
+                    config.put("ssl.truststore.location", trustStoreLocation);
+                    if (trustStorePassword != null && !trustStorePassword.isEmpty()) {
+                        config.put("ssl.truststore.password", trustStorePassword);
+                    }
+                } else {
+                    logger.warn("Truststore location '{}' is not a valid file, skipping truststore configuration", trustStoreLocation);
+                }
+            }
             config.put("ssl.endpoint.identification.algorithm", "https");
         }
         

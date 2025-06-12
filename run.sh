@@ -5,6 +5,15 @@
 
 set -e
 
+# Set JAVA_HOME if not already set
+if [ -z "$JAVA_HOME" ]; then
+    if [ -d "/usr/lib/jvm/java-17-amazon-corretto" ]; then
+        export JAVA_HOME="/usr/lib/jvm/java-17-amazon-corretto"
+    elif [ -d "/usr/lib/jvm/default-java" ]; then
+        export JAVA_HOME="/usr/lib/jvm/default-java"
+    fi
+fi
+
 JAR_FILE="target/acl-to-cc-rbac-utility-1.0.0.jar"
 RELEASE_JAR="release/acl-to-cc-rbac-utility-1.0.0.jar"
 

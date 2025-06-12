@@ -7,7 +7,7 @@ set -e
 
 # Configuration
 JAR_FILE="target/acl-to-cc-rbac-utility-1.0.0.jar"
-RELEASE_JAR="release/acl-to-cc-rbac-utility-1.0.0.jar"
+RELEASE_JAR="target/acl-to-cc-rbac-utility-1.0.0.jar"
 DEFAULT_OUTPUT_FILE="msk_acls_$(date +%Y%m%d_%H%M%S).json"
 CONFIG_FILE="config.properties"
 

@@ -5,6 +5,21 @@
 
 set -e  # Exit on any error
 
+# Set JAVA_HOME if not already set
+if [ -z "$JAVA_HOME" ]; then
+    if [ -d "/usr/lib/jvm/java-17-amazon-corretto" ]; then
+        export JAVA_HOME="/usr/lib/jvm/java-17-amazon-corretto"
+        echo "✅ JAVA_HOME set to: $JAVA_HOME"
+    elif [ -d "/usr/lib/jvm/default-java" ]; then
+        export JAVA_HOME="/usr/lib/jvm/default-java"
+        echo "✅ JAVA_HOME set to: $JAVA_HOME"
+    else
+        echo "❌ Error: Could not find Java installation directory"
+        echo "   Please set JAVA_HOME manually or install Java"
+        exit 1
+    fi
+fi
+
 echo "🔨 Building MSK ACL Extractor..."
 
 # Check if Maven is installed

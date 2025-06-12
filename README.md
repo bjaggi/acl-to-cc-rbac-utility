@@ -7,18 +7,30 @@ This Java-based utility connects to Amazon MSK (Managed Streaming for Apache Kaf
 - ✅ Connect to Amazon MSK clusters using various authentication methods
 - ✅ Export all ACLs to structured JSON format
 - ✅ Support for SSL, SASL_SSL, and IAM authentication
+- ✅ **Automatic JAVA_HOME detection and setup**
+- ✅ **Smart bootstrap server selection** (fixes port/authentication mismatches)
+- ✅ **Robust SSL configuration handling** (handles invalid truststore paths)
 - ✅ Include cluster metadata in export
 - ✅ Interactive mode for easy configuration
 - ✅ Configuration file support
-- ✅ Comprehensive logging
+- ✅ Comprehensive logging and error handling
 - ✅ Shell scripts for building and running
 
 ## Prerequisites
 
-- Java 11 or higher
-- Maven 3.6 or higher
-- AWS credentials configured (via AWS CLI, environment variables, or IAM roles)
-- Network access to your MSK cluster
+- **Java 11 or higher** (Java 17 recommended)
+  - For Amazon Linux/EC2: `sudo yum install java-17-amazon-corretto`
+  - For Ubuntu/Debian: `sudo apt-get install openjdk-17-jdk`
+- **Maven 3.6 or higher**
+  - For Amazon Linux: `sudo yum install maven`
+  - For Ubuntu/Debian: `sudo apt-get install maven`
+- **JAVA_HOME environment variable** properly set
+  - The build and run scripts will attempt to set this automatically
+  - Manual setup: `export JAVA_HOME=/usr/lib/jvm/java-17-amazon-corretto`
+- **AWS credentials configured** (via AWS CLI, environment variables, or IAM roles)
+  - Test with: `aws sts get-caller-identity`
+- **Network access to your MSK cluster**
+  - Ensure security groups allow connections from your IP
 
 ## Quick Start
 
@@ -43,6 +55,15 @@ This Java-based utility connects to Amazon MSK (Managed Streaming for Apache Kaf
    ```
 
 ## Authentication Methods
+
+The utility automatically selects the correct bootstrap servers and ports based on your authentication method:
+
+| Authentication Method | Security Protocol | Port | Bootstrap Server Type |
+|-----------------------|-------------------|------|----------------------|
+| **SSL** (Default)     | `SSL`            | 9094 | TLS                  |
+| **IAM** (Recommended) | `SASL_SSL`       | 9098 | SASL_IAM            |
+| **SCRAM**             | `SASL_SSL`       | 9096 | SASL_SCRAM          |
+| **Plaintext**         | `PLAINTEXT`      | 9092 | Plaintext           |
 
 ### SSL (Default)
 ```bash
@@ -240,24 +261,89 @@ java -jar target/acl-to-cc-rbac-utility-1.0.0.jar --help
 
 ### Common Issues
 
-1. **AWS Credentials Error**
-   - Ensure AWS credentials are configured: `aws configure` or `aws sts get-caller-identity`
+1. **JAVA_HOME Not Set Error**
+   ```
+   The JAVA_HOME environment variable is not defined correctly
+   ```
+   **Solution:**
+   - The build and run scripts automatically detect and set JAVA_HOME
+   - For manual setup: `export JAVA_HOME=/usr/lib/jvm/java-17-amazon-corretto`
+   - Verify with: `echo $JAVA_HOME && java -version`
 
-2. **Connection Timeout**
+2. **SSL Keystore Loading Error**
+   ```
+   KafkaException: Failed to load SSL keystore of type JKS
+   Caused by: java.io.IOException: Is a directory
+   ```
+   **Solution:**
+   - This happens when SSL truststore points to a directory instead of a file
+   - The application now automatically handles this by skipping invalid truststore paths
+   - For SASL_SSL with IAM: No truststore configuration needed
+
+3. **Wrong Bootstrap Server Port Error**
+   ```
+   Unexpected handshake request with client mechanism AWS_MSK_IAM, enabled mechanisms are []
+   ```
+   **Solution:**
+   - This happens when using wrong port for authentication method
+   - Fixed: Application now automatically selects correct bootstrap servers:
+     - `SASL_SSL` with `AWS_MSK_IAM` → Uses port 9098 (SASL_IAM servers)
+     - `SSL` → Uses port 9094 (TLS servers)
+     - `SASL_SSL` with `SCRAM` → Uses port 9096 (SASL_SCRAM servers)
+
+4. **AWS Credentials Error**
+   - Ensure AWS credentials are configured: `aws configure` or `aws sts get-caller-identity`
+   - Check if credentials have required MSK permissions (see Permissions section below)
+
+5. **Connection Timeout**
    - Check network connectivity to MSK cluster
    - Verify security groups allow access from your IP
+   - For port 9098 (SASL_IAM), ensure security group allows TCP 9098
 
-3. **Authentication Failed**
+6. **Authentication Failed**
    - For IAM auth: Ensure your AWS credentials have necessary MSK permissions
    - For SCRAM: Verify username/password are correct
+   - Check that the authentication method matches your MSK cluster configuration
 
 ### Permissions Required
 
-For IAM authentication, your AWS credentials need:
+For IAM authentication, your AWS credentials need these permissions:
+
+**MSK Cluster Permissions:**
 - `kafka:DescribeCluster`
 - `kafka:GetBootstrapBrokers`
-- `kafka-cluster:Connect`
-- `kafka-cluster:DescribeCluster`
+
+**MSK Connect Permissions:**
+- `kafka-cluster:Connect` (for cluster ARN)
+- `kafka-cluster:DescribeCluster` (for cluster ARN)
+- `kafka-cluster:AlterCluster` (if modifying ACLs)
+- `kafka-cluster:DescribeClusterDynamicConfiguration`
+
+**Example IAM Policy:**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "kafka:DescribeCluster",
+        "kafka:GetBootstrapBrokers"
+      ],
+      "Resource": "arn:aws:kafka:*:*:cluster/*"
+    },
+    {
+      "Effect": "Allow", 
+      "Action": [
+        "kafka-cluster:Connect",
+        "kafka-cluster:DescribeCluster",
+        "kafka-cluster:DescribeClusterDynamicConfiguration"
+      ],
+      "Resource": "arn:aws:kafka:*:*:cluster/*"
+    }
+  ]
+}
+```
 
 ### Logs
 
