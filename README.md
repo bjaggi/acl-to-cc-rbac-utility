@@ -36,7 +36,7 @@ This Java-based utility connects to Amazon MSK (Managed Streaming for Apache Kaf
 
 1. **Make scripts executable:**
    ```bash
-   chmod +x build.sh extract-msk-acls.sh extract-acls.sh
+   chmod +x build.sh extract-msk-metadata.sh extract-acls.sh
    ```
 
 2. **Build the application:**
@@ -52,7 +52,7 @@ This Java-based utility connects to Amazon MSK (Managed Streaming for Apache Kaf
 
 4. **Extract ACLs and topics from MSK:**
    ```bash
-   ./extract-msk-acls.sh
+   ./extract-msk-metadata.sh
    ```
 
 5. **Convert to Confluent Cloud RBAC (optional):**
@@ -265,7 +265,7 @@ The utility generates a JSON file with the following structure:
 ### Build Scripts
 
 - `build.sh` - Build the Java application using Maven
-- `extract-msk-acls.sh` - Simple MSK ACL and topic extractor (reads from msk.config)
+- `extract-msk-metadata.sh` - Simple MSK metadata extractor (reads from msk.config) - extracts ACLs, topics, and schemas
 - `extract-acls.sh` - Advanced script with interactive mode and flexible configuration
 
 ### Manual Build

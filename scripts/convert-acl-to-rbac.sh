@@ -165,7 +165,7 @@ validate_input() {
     if [[ ! -f "$REQUIRED_INPUT_FILE" ]]; then
         print_error "Required input file does not exist: $REQUIRED_INPUT_FILE"
         print_error "Please run the MSK ACL extractor first to generate this file:"
-        print_error "  ./scripts/extract-msk-acls.sh"
+        print_error "  ./scripts/extract-msk-metadata.sh"
         exit 1
     fi
     

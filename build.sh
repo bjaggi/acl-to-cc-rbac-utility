@@ -81,7 +81,7 @@ if [ $? -eq 0 ]; then
     
     echo ""
     echo "🚀 You can now run the utility with:"
-          echo "   ./scripts/extract-msk-acls.sh --help"
+          echo "   ./scripts/extract-msk-metadata.sh --help"
     echo "   or"
     echo "   java -jar $JAR_FILE --help"
 else
@@ -90,11 +90,11 @@ else
 fi
 
 # Make run script executable
-      chmod +x extract-msk-acls.sh
+      chmod +x extract-msk-metadata.sh
 chmod +x extract-acls.sh
 
 echo ""
 echo "🔧 Shell scripts made executable:"
 echo "   build.sh (this script)"
-      echo "   extract-msk-acls.sh (MSK ACL extractor)"
+      echo "   extract-msk-metadata.sh (MSK metadata extractor)"
 echo "   extract-acls.sh (comprehensive script with examples)" 
