@@ -1,0 +1,62 @@
+# MSK ACL Extractor Configuration
+# Copy this file to config.properties and update with your values
+# Properties can be specified with or without quotes
+
+# ===== REQUIRED SETTINGS =====
+
+# MSK Cluster ARN (REQUIRED)
+cluster.arn=arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123
+
+# ===== OPTIONAL SETTINGS =====
+
+# AWS Region (default: us-east-1)
+aws.region=us-east-1
+
+
+# ===== SECURITY SETTINGS =====
+
+# Security Protocol: SSL, SASL_SSL, PLAINTEXT, SASL_PLAINTEXT
+# Default: SSL
+security.protocol=SSL
+
+# SASL Mechanism: AWS_MSK_IAM, SCRAM-SHA-256, SCRAM-SHA-512, PLAIN
+# Uncomment and set if using SASL
+# sasl.mechanism=AWS_MSK_IAM
+
+# SASL Credentials (only needed for SCRAM-SHA-256, SCRAM-SHA-512, PLAIN)
+# Uncomment and set if using username/password authentication
+# sasl.username=your-username
+# sasl.password=your-password
+
+# ===== OUTPUT SETTINGS =====
+
+# Exclude cluster metadata from output (true/false)
+# Default: false
+output.no-metadata=false
+
+# ===== LOGGING SETTINGS =====
+
+# Enable verbose logging (true/false)
+# Default: false
+logging.verbose=false
+
+# ===== EXAMPLES =====
+
+# Example 1: Basic SSL connection (default)
+# cluster.arn=arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123
+# aws.region=us-east-1
+# security.protocol=SSL
+
+# Example 2: IAM Authentication (recommended for MSK)
+# cluster.arn=arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123
+# aws.region=us-east-1
+# security.protocol=SASL_SSL
+# sasl.mechanism=AWS_MSK_IAM
+
+# Example 3: SCRAM Authentication
+# cluster.arn=arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123
+# aws.region=us-east-1
+# security.protocol=SASL_SSL
+# sasl.mechanism=SCRAM-SHA-256
+# sasl.username=myuser
+# sasl.password=mypassword
