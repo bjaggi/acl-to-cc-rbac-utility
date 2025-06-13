@@ -6,7 +6,12 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.apache.commons.cli.*;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.DescribeAclsResult;
+import org.apache.kafka.clients.admin.DescribeConfigsResult;
+import org.apache.kafka.clients.admin.DescribeTopicsResult;
+import org.apache.kafka.clients.admin.ListTopicsResult;
+import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.acl.*;
+import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.config.SaslConfigs;
 import org.apache.kafka.common.resource.PatternType;
 import org.apache.kafka.common.resource.ResourcePattern;
@@ -17,6 +22,9 @@ import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.kafka.KafkaClient;
 import software.amazon.awssdk.services.kafka.model.*;
+import software.amazon.awssdk.services.glue.GlueClient;
+import software.amazon.awssdk.services.glue.model.*;
+import software.amazon.awssdk.core.exception.SdkClientException;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -37,6 +45,7 @@ public class MSKACLExtractor {
     private final String clusterArn;
     private final String region;
     private final KafkaClient mskClient;
+    private final GlueClient glueClient;
     private AdminClient adminClient;
     private ClusterInfo clusterInfo;
 
@@ -44,6 +53,10 @@ public class MSKACLExtractor {
         this.clusterArn = clusterArn;
         this.region = region;
         this.mskClient = KafkaClient.builder()
+                .region(Region.of(region))
+                .credentialsProvider(DefaultCredentialsProvider.create())
+                .build();
+        this.glueClient = GlueClient.builder()
                 .region(Region.of(region))
                 .credentialsProvider(DefaultCredentialsProvider.create())
                 .build();
@@ -226,6 +239,203 @@ public class MSKACLExtractor {
     }
 
     /**
+     * List all topics from the MSK cluster
+     */
+    public List<TopicInfo> listTopics() throws MSKACLExtractorException {
+        if (adminClient == null) {
+            throw new MSKACLExtractorException("Not connected to cluster. Call connectToCluster() first.");
+        }
+        
+        try {
+            // List topics
+            ListTopicsResult listTopicsResult = adminClient.listTopics();
+            Set<String> topicNames = listTopicsResult.names().get();
+            
+            if (topicNames.isEmpty()) {
+                logger.info("No topics found in the cluster");
+                return new ArrayList<>();
+            }
+            
+            // Describe topics to get detailed information
+            DescribeTopicsResult describeResult = adminClient.describeTopics(topicNames);
+            Map<String, TopicDescription> topicDescriptions = describeResult.all().get();
+            
+            // Describe configurations for all topics
+            List<ConfigResource> configResources = topicNames.stream()
+                    .map(name -> new ConfigResource(ConfigResource.Type.TOPIC, name))
+                    .collect(java.util.stream.Collectors.toList());
+            
+            DescribeConfigsResult configsResult = adminClient.describeConfigs(configResources);
+            Map<ConfigResource, org.apache.kafka.clients.admin.Config> configs = configsResult.all().get();
+            
+            List<TopicInfo> topics = new ArrayList<>();
+            
+            for (Map.Entry<String, TopicDescription> entry : topicDescriptions.entrySet()) {
+                String topicName = entry.getKey();
+                TopicDescription description = entry.getValue();
+                
+                TopicInfo topicInfo = new TopicInfo(description);
+                
+                // Add configurations
+                ConfigResource configResource = new ConfigResource(ConfigResource.Type.TOPIC, topicName);
+                org.apache.kafka.clients.admin.Config config = configs.get(configResource);
+                
+                if (config != null) {
+                    Map<String, String> configMap = new HashMap<>();
+                    config.entries().forEach(entry1 -> {
+                        // Only include non-default configurations that are set
+                        if (!entry1.isDefault() && entry1.value() != null) {
+                            configMap.put(entry1.name(), entry1.value());
+                        }
+                    });
+                    topicInfo.setConfigurations(configMap);
+                }
+                
+                topics.add(topicInfo);
+            }
+            
+            logger.info("Retrieved {} topics from the cluster", topics.size());
+            return topics;
+            
+        } catch (InterruptedException | ExecutionException e) {
+            logger.error("Failed to list topics: {}", e.getMessage());
+            throw new MSKACLExtractorException("Failed to list topics", e);
+        }
+    }
+
+    /**
+     * List all schemas from AWS Glue Schema Registry
+     */
+    public List<SchemaInfo> listSchemas() throws MSKACLExtractorException {
+        List<SchemaInfo> allSchemas = new ArrayList<>();
+        
+        try {
+            // First, list all registries
+            ListRegistriesRequest listRegistriesRequest = ListRegistriesRequest.builder().build();
+            ListRegistriesResponse registriesResponse = glueClient.listRegistries(listRegistriesRequest);
+            
+            for (RegistryListItem registry : registriesResponse.registries()) {
+                logger.info("Processing registry: {}", registry.registryName());
+                
+                try {
+                    // List schemas in this registry
+                    ListSchemasRequest listSchemasRequest = ListSchemasRequest.builder()
+                            .registryId(RegistryId.builder()
+                                    .registryName(registry.registryName())
+                                    .build())
+                            .build();
+                    
+                    ListSchemasResponse schemasResponse = glueClient.listSchemas(listSchemasRequest);
+                    
+                    for (SchemaListItem schemaItem : schemasResponse.schemas()) {
+                        try {
+                            // Get detailed schema information
+                            GetSchemaRequest getSchemaRequest = GetSchemaRequest.builder()
+                                    .schemaId(SchemaId.builder()
+                                            .schemaName(schemaItem.schemaName())
+                                            .registryName(registry.registryName())
+                                            .build())
+                                    .build();
+                            
+                            GetSchemaResponse schemaResponse = glueClient.getSchema(getSchemaRequest);
+                            
+                            // List all versions of this schema
+                            ListSchemaVersionsRequest listVersionsRequest = ListSchemaVersionsRequest.builder()
+                                    .schemaId(SchemaId.builder()
+                                            .schemaName(schemaItem.schemaName())
+                                            .registryName(registry.registryName())
+                                            .build())
+                                    .build();
+                            
+                            ListSchemaVersionsResponse versionsResponse = glueClient.listSchemaVersions(listVersionsRequest);
+                            
+                            // Get details for each version
+                            for (SchemaVersionListItem versionItem : versionsResponse.schemas()) {
+                                try {
+                                    GetSchemaVersionRequest versionRequest = GetSchemaVersionRequest.builder()
+                                            .schemaId(SchemaId.builder()
+                                                    .schemaName(schemaItem.schemaName())
+                                                    .registryName(registry.registryName())
+                                                    .build())
+                                            .schemaVersionNumber(SchemaVersionNumber.builder()
+                                                    .versionNumber(versionItem.versionNumber())
+                                                    .build())
+                                            .build();
+                                    
+                                    GetSchemaVersionResponse versionResponse = glueClient.getSchemaVersion(versionRequest);
+                                    
+                                    // Create SchemaInfo object for this version
+                                    SchemaInfo schemaInfo = new SchemaInfo();
+                                    schemaInfo.setSchemaId(schemaResponse.schemaArn());
+                                    schemaInfo.setSchemaName(schemaResponse.schemaName());
+                                    schemaInfo.setRegistryName(registry.registryName());
+                                    schemaInfo.setSchemaArn(schemaResponse.schemaArn());
+                                    schemaInfo.setDataFormat(schemaResponse.dataFormat() != null ? schemaResponse.dataFormat().toString() : null);
+                                    schemaInfo.setCompatibility(schemaResponse.compatibility() != null ? schemaResponse.compatibility().toString() : null);
+                                    schemaInfo.setDescription(schemaResponse.description());
+                                    schemaInfo.setStatus(versionItem.status() != null ? versionItem.status().toString() : null);
+                                    schemaInfo.setCreatedTime(versionItem.createdTime() != null ? versionItem.createdTime().toString() : null);
+                                    schemaInfo.setUpdatedTime(schemaResponse.updatedTime() != null ? schemaResponse.updatedTime().toString() : null);
+                                    
+                                    // Set version information
+                                    schemaInfo.setVersionNumber(versionResponse.versionNumber());
+                                    schemaInfo.setVersionId(versionResponse.schemaVersionId());
+                                    schemaInfo.setSchemaDefinition(versionResponse.schemaDefinition());
+                                    
+                                    allSchemas.add(schemaInfo);
+                                    
+                                } catch (Exception e) {
+                                    logger.warn("Failed to get details for version {} of schema {} in registry {}: {}", 
+                                               versionItem.versionNumber(), schemaItem.schemaName(), registry.registryName(), e.getMessage());
+                                }
+                            }
+                            
+                        } catch (Exception e) {
+                            logger.warn("Failed to get details for schema {} in registry {}: {}", 
+                                       schemaItem.schemaName(), registry.registryName(), e.getMessage());
+                        }
+                    }
+                    
+                } catch (Exception e) {
+                    logger.warn("Failed to list schemas in registry {}: {}", registry.registryName(), e.getMessage());
+                }
+            }
+            
+            logger.info("Retrieved {} schemas from {} registries", allSchemas.size(), registriesResponse.registries().size());
+            return allSchemas;
+            
+        } catch (SdkClientException e) {
+            logger.warn("Could not connect to AWS Glue Schema Registry: {}", e.getMessage());
+            logger.info("Continuing without schema extraction...");
+            return new ArrayList<>();
+        } catch (Exception e) {
+            logger.error("Failed to list schemas: {}", e.getMessage());
+            throw new MSKACLExtractorException("Failed to list schemas", e);
+        }
+    }
+
+    /**
+     * Export ACLs and Topics to separate JSON files in generated_jsons folder
+     */
+    public void exportACLsAndTopicsToJSON(boolean includeMetadata) throws MSKACLExtractorException {
+        // Create output directory if it doesn't exist
+        java.io.File outputDir = new java.io.File("generated_jsons");
+        if (!outputDir.exists()) {
+            outputDir.mkdirs();
+            logger.info("Created output directory: generated_jsons");
+        }
+        
+        // Export ACLs to generated_jsons/msk_acls.json
+        exportACLsToJSON("generated_jsons/msk_acls.json", includeMetadata);
+        
+        // Export Topics to generated_jsons/msk_topics.json
+        exportTopicsToJSON("generated_jsons/msk_topics.json", includeMetadata);
+        
+        // Export Schemas to generated_jsons/msk_schemas.json
+        exportSchemasToJSON("generated_jsons/msk_schemas.json", includeMetadata);
+    }
+    
+    /**
      * Export ACLs to a JSON file
      */
     public void exportACLsToJSON(String outputFile, boolean includeMetadata) throws MSKACLExtractorException {
@@ -233,24 +443,79 @@ public class MSKACLExtractor {
         
         Map<String, Object> exportData = new HashMap<>();
         exportData.put("acls", acls);
-        exportData.put("count", acls.size());
+        exportData.put("acl_count", acls.size());
         exportData.put("exported_at", LocalDateTime.now().toString());
         
         if (includeMetadata && clusterInfo != null) {
-            Map<String, Object> metadata = new HashMap<>();
-            metadata.put("cluster_name", clusterInfo.clusterName());
-            metadata.put("cluster_arn", clusterArn);
-            metadata.put("state", clusterInfo.state().toString());
-            metadata.put("kafka_version", clusterInfo.currentVersion());
-            metadata.put("number_of_broker_nodes", clusterInfo.numberOfBrokerNodes());
-            if (clusterInfo.brokerNodeGroupInfo() != null) {
-                metadata.put("instance_type", clusterInfo.brokerNodeGroupInfo().instanceType());
-            }
-            metadata.put("region", region);
-            
+            Map<String, Object> metadata = createClusterMetadata();
             exportData.put("cluster_metadata", metadata);
         }
         
+        writeJSONFile(outputFile, exportData);
+        logger.info("Successfully exported {} ACLs to {}", acls.size(), outputFile);
+    }
+    
+    /**
+     * Export Topics to a JSON file
+     */
+    public void exportTopicsToJSON(String outputFile, boolean includeMetadata) throws MSKACLExtractorException {
+        List<TopicInfo> topics = listTopics();
+        
+        Map<String, Object> exportData = new HashMap<>();
+        exportData.put("topics", topics);
+        exportData.put("topic_count", topics.size());
+        exportData.put("exported_at", LocalDateTime.now().toString());
+        
+        if (includeMetadata && clusterInfo != null) {
+            Map<String, Object> metadata = createClusterMetadata();
+            exportData.put("cluster_metadata", metadata);
+        }
+        
+        writeJSONFile(outputFile, exportData);
+        logger.info("Successfully exported {} topics to {}", topics.size(), outputFile);
+    }
+    
+    /**
+     * Export Schemas to a JSON file
+     */
+    public void exportSchemasToJSON(String outputFile, boolean includeMetadata) throws MSKACLExtractorException {
+        List<SchemaInfo> schemas = listSchemas();
+        
+        Map<String, Object> exportData = new HashMap<>();
+        exportData.put("schemas", schemas);
+        exportData.put("schema_count", schemas.size());
+        exportData.put("exported_at", LocalDateTime.now().toString());
+        
+        if (includeMetadata && clusterInfo != null) {
+            Map<String, Object> metadata = createClusterMetadata();
+            exportData.put("cluster_metadata", metadata);
+        }
+        
+        writeJSONFile(outputFile, exportData);
+        logger.info("Successfully exported {} schemas to {}", schemas.size(), outputFile);
+    }
+    
+    /**
+     * Create cluster metadata object
+     */
+    private Map<String, Object> createClusterMetadata() {
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("cluster_name", clusterInfo.clusterName());
+        metadata.put("cluster_arn", clusterArn);
+        metadata.put("state", clusterInfo.state().toString());
+        metadata.put("kafka_version", clusterInfo.currentVersion());
+        metadata.put("number_of_broker_nodes", clusterInfo.numberOfBrokerNodes());
+        if (clusterInfo.brokerNodeGroupInfo() != null) {
+            metadata.put("instance_type", clusterInfo.brokerNodeGroupInfo().instanceType());
+        }
+        metadata.put("region", region);
+        return metadata;
+    }
+    
+    /**
+     * Write data to JSON file
+     */
+    private void writeJSONFile(String outputFile, Map<String, Object> data) throws MSKACLExtractorException {
         try {
             ObjectMapper mapper = new ObjectMapper();
             mapper.registerModule(new JavaTimeModule());
@@ -258,10 +523,8 @@ public class MSKACLExtractor {
             mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
             
             try (FileWriter writer = new FileWriter(outputFile)) {
-                mapper.writeValue(writer, exportData);
+                mapper.writeValue(writer, data);
             }
-            
-            logger.info("Successfully exported {} ACLs to {}", acls.size(), outputFile);
             
         } catch (IOException e) {
             logger.error("Failed to write to file {}: {}", outputFile, e.getMessage());
@@ -279,6 +542,9 @@ public class MSKACLExtractor {
         if (mskClient != null) {
             mskClient.close();
         }
+        if (glueClient != null) {
+            glueClient.close();
+        }
     }
 
     public static void main(String[] args) {
@@ -295,7 +561,7 @@ public class MSKACLExtractor {
             
             String clusterArn = cmd.getOptionValue("cluster-arn");
             String region = cmd.getOptionValue("region", "us-east-1");
-            String outputFile = cmd.getOptionValue("output-file", "msk_acls.json");
+            // Note: output-file option is ignored - files are automatically saved to generated_jsons/ folder
             String securityProtocol = cmd.getOptionValue("security-protocol", "SSL");
             String saslMechanism = cmd.getOptionValue("sasl-mechanism");
             String saslUsername = cmd.getOptionValue("sasl-username");
@@ -320,10 +586,12 @@ public class MSKACLExtractor {
                 extractor.getClusterInfo();
                 extractor.connectToCluster(securityProtocol, saslMechanism, saslUsername, saslPassword);
                 
-                logger.info("Exporting ACLs...");
-                extractor.exportACLsToJSON(outputFile, !noMetadata);
+                logger.info("Exporting ACLs, Topics, and Schemas...");
+                extractor.exportACLsAndTopicsToJSON(!noMetadata);
                 
-                System.out.println("✅ Successfully exported ACLs to " + outputFile);
+                System.out.println("✅ Successfully exported ACLs to generated_jsons/msk_acls.json");
+                System.out.println("✅ Successfully exported Topics to generated_jsons/msk_topics.json");
+                System.out.println("✅ Successfully exported Schemas to generated_jsons/msk_schemas.json");
                 
             } finally {
                 extractor.close();
@@ -335,7 +603,7 @@ public class MSKACLExtractor {
             System.exit(1);
         } catch (MSKACLExtractorException e) {
             logger.error("Error: {}", e.getMessage());
-            System.err.println("❌ Failed to export ACLs: " + e.getMessage());
+            System.err.println("❌ Failed to export ACLs and Topics: " + e.getMessage());
             System.exit(1);
         }
     }
@@ -343,60 +611,60 @@ public class MSKACLExtractor {
     private static Options createOptions() {
         Options options = new Options();
         
-        options.addOption(Option.builder()
+        options.addOption(org.apache.commons.cli.Option.builder()
                 .longOpt("cluster-arn")
                 .hasArg()
                 .required()
                 .desc("ARN of the MSK cluster")
                 .build());
         
-        options.addOption(Option.builder()
+        options.addOption(org.apache.commons.cli.Option.builder()
                 .longOpt("region")
                 .hasArg()
                 .desc("AWS region (default: us-east-1)")
                 .build());
         
-        options.addOption(Option.builder()
+        options.addOption(org.apache.commons.cli.Option.builder()
                 .longOpt("output-file")
                 .hasArg()
-                .desc("Output JSON file (default: msk_acls.json)")
+                .desc("Legacy option - outputs now go to generated_jsons/ folder automatically")
                 .build());
         
-        options.addOption(Option.builder()
+        options.addOption(org.apache.commons.cli.Option.builder()
                 .longOpt("security-protocol")
                 .hasArg()
                 .desc("Security protocol: SSL, SASL_SSL, PLAINTEXT, SASL_PLAINTEXT (default: SSL)")
                 .build());
         
-        options.addOption(Option.builder()
+        options.addOption(org.apache.commons.cli.Option.builder()
                 .longOpt("sasl-mechanism")
                 .hasArg()
                 .desc("SASL mechanism: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512, AWS_MSK_IAM")
                 .build());
         
-        options.addOption(Option.builder()
+        options.addOption(org.apache.commons.cli.Option.builder()
                 .longOpt("sasl-username")
                 .hasArg()
                 .desc("SASL username if required")
                 .build());
         
-        options.addOption(Option.builder()
+        options.addOption(org.apache.commons.cli.Option.builder()
                 .longOpt("sasl-password")
                 .hasArg()
                 .desc("SASL password if required")
                 .build());
         
-        options.addOption(Option.builder()
+        options.addOption(org.apache.commons.cli.Option.builder()
                 .longOpt("no-metadata")
                 .desc("Exclude cluster metadata from export")
                 .build());
         
-        options.addOption(Option.builder("v")
+        options.addOption(org.apache.commons.cli.Option.builder("v")
                 .longOpt("verbose")
                 .desc("Enable verbose logging")
                 .build());
         
-        options.addOption(Option.builder("h")
+        options.addOption(org.apache.commons.cli.Option.builder("h")
                 .longOpt("help")
                 .desc("Show this help message")
                 .build());
@@ -406,11 +674,14 @@ public class MSKACLExtractor {
 
     private static void printHelp(Options options) {
         HelpFormatter formatter = new HelpFormatter();
-        formatter.printHelp("java -jar acl-to-cc-rbac-utility.jar", 
-                "Amazon MSK ACL Extractor\n\n" +
-                "Connects to an Amazon MSK cluster and exports all ACLs to a JSON file.\n\n" +
+        formatter.printHelp("java -jar msk-acl-extractor.jar", 
+                "Amazon MSK ACL and Topic Extractor\n\n" +
+                "Connects to an Amazon MSK cluster and exports:\n" +
+                "  • ACLs to generated_jsons/msk_acls.json\n" +
+                "  • Topics to generated_jsons/msk_topics.json\n" +
+                "  • Schemas to generated_jsons/msk_schemas.json\n\n" +
                 "Example usage:\n" +
-                "java -jar acl-to-cc-rbac-utility.jar --cluster-arn arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123\n\n" +
+                "java -jar msk-acl-extractor.jar --cluster-arn arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123\n\n" +
                 "Options:", 
                 options, 
                 "\nFor more information, visit: https://github.com/confluent/acl-to-cc-rbac-utility");

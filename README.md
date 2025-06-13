@@ -36,7 +36,7 @@ This Java-based utility connects to Amazon MSK (Managed Streaming for Apache Kaf
 
 1. **Make scripts executable:**
    ```bash
-   chmod +x build.sh run.sh extract-acls.sh
+   chmod +x build.sh extract-msk-acls.sh extract-acls.sh
    ```
 
 2. **Build the application:**
@@ -44,15 +44,33 @@ This Java-based utility connects to Amazon MSK (Managed Streaming for Apache Kaf
    ./build.sh
    ```
 
-3. **Run in interactive mode:**
+3. **Configure MSK connection in msk.config:**
    ```bash
-   ./extract-acls.sh --interactive
+   # Edit msk.config with your actual MSK cluster details
+   vi msk.config
    ```
 
-4. **Or run directly with parameters:**
+4. **Extract ACLs and topics from MSK:**
    ```bash
-   ./extract-acls.sh --cluster-arn arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123
+   ./extract-msk-acls.sh
    ```
+
+5. **Convert to Confluent Cloud RBAC (optional):**
+   ```bash
+   ./scripts/convert-acl-to-rbac.sh -e env-12345 -c lkc-67890
+   ```
+
+## Alternative: Advanced Usage with extract-acls.sh
+
+For advanced usage, interactive mode, or custom configurations:
+
+```bash
+# Interactive mode
+./extract-acls.sh --interactive
+
+# Direct command line
+./extract-acls.sh --cluster-arn arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123
+```
 
 ## Authentication Methods
 
@@ -247,8 +265,8 @@ The utility generates a JSON file with the following structure:
 ### Build Scripts
 
 - `build.sh` - Build the Java application using Maven
-- `run.sh` - Simple runner script
-- `extract-acls.sh` - Comprehensive script with examples and interactive mode
+- `extract-msk-acls.sh` - Simple MSK ACL and topic extractor (reads from msk.config)
+- `extract-acls.sh` - Advanced script with interactive mode and flexible configuration
 
 ### Manual Build
 

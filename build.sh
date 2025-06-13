@@ -81,9 +81,8 @@ if [ $? -eq 0 ]; then
     
     echo ""
     echo "🚀 You can now run the utility with:"
-    echo "   ./scripts/run.sh --help"
+          echo "   ./scripts/extract-msk-acls.sh --help"
     echo "   or"
-    echo  $RELEASE_JAR
     echo "   java -jar $JAR_FILE --help"
 else
     echo "❌ Build failed!"
@@ -91,11 +90,11 @@ else
 fi
 
 # Make run script executable
-chmod +x run.sh
+      chmod +x extract-msk-acls.sh
 chmod +x extract-acls.sh
 
 echo ""
 echo "🔧 Shell scripts made executable:"
 echo "   build.sh (this script)"
-echo "   run.sh (simple runner)"
+      echo "   extract-msk-acls.sh (MSK ACL extractor)"
 echo "   extract-acls.sh (comprehensive script with examples)" 

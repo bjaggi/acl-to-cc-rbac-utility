@@ -158,33 +158,37 @@ build_application() {
     fi
 }
 
-# Validate input file
+# Validate input file (always generated_jsons/msk_acls.json)
 validate_input() {
-    if [[ ! -f "$INPUT_FILE" ]]; then
-        print_error "Input file does not exist: $INPUT_FILE"
+    REQUIRED_INPUT_FILE="generated_jsons/msk_acls.json"
+    
+    if [[ ! -f "$REQUIRED_INPUT_FILE" ]]; then
+        print_error "Required input file does not exist: $REQUIRED_INPUT_FILE"
+        print_error "Please run the MSK ACL extractor first to generate this file:"
+        print_error "  ./scripts/extract-msk-acls.sh"
         exit 1
     fi
     
     # Check if file is valid JSON
-    if ! python3 -m json.tool "$INPUT_FILE" > /dev/null 2>&1; then
-        print_error "Input file is not valid JSON: $INPUT_FILE"
+    if ! python3 -m json.tool "$REQUIRED_INPUT_FILE" > /dev/null 2>&1; then
+        print_error "Input file is not valid JSON: $REQUIRED_INPUT_FILE"
         exit 1
     fi
     
-    print_info "Input file validated: $INPUT_FILE"
+    print_info "Input file validated: $REQUIRED_INPUT_FILE"
 }
 
 # Run the conversion
 run_conversion() {
     print_info "Starting ACL to RBAC conversion..."
-    print_info "Input file: $INPUT_FILE"
+    print_info "Input file: generated_jsons/msk_acls.json (hardcoded)"
     print_info "Output file: $OUTPUT_FILE"
     print_info "Target environment: $ENVIRONMENT"
     print_info "Target cluster: $CLUSTER_ID"
     
-    # Construct Java command
+    # Construct Java command (no longer needs input file as argument)
     JAVA_CMD="java -jar target/acl-to-rbac-converter.jar"
-    JAVA_CMD="$JAVA_CMD \"$INPUT_FILE\" \"$OUTPUT_FILE\" \"$ENVIRONMENT\" \"$CLUSTER_ID\""
+    JAVA_CMD="$JAVA_CMD \"$OUTPUT_FILE\" \"$ENVIRONMENT\" \"$CLUSTER_ID\""
     
     if $VERBOSE; then
         print_info "Running command: $JAVA_CMD"

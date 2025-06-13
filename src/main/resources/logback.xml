@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<configuration>
+<configuration debug="false">
+    
+    <!-- Suppress logback status messages -->
+    <statusListener class="ch.qos.logback.core.status.NopStatusListener" />
     
     <!-- Console appender -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
@@ -33,6 +36,12 @@
     
     <!-- Logger for AWS SDK (reduce noise) -->
     <logger name="software.amazon.awssdk" level="WARN" />
+    
+    <!-- Logger for Logback processors (suppress verbose configuration logs) -->
+    <logger name="ch.qos.logback" level="ERROR" additivity="false" />
+    <logger name="ch.qos.logback.core" level="ERROR" additivity="false" />
+    <logger name="ch.qos.logback.core.model.processor" level="ERROR" additivity="false" />
+    
     
     <!-- Root logger -->
     <root level="INFO">

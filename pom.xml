@@ -50,6 +50,13 @@
             <version>${aws.sdk.version}</version>
         </dependency>
 
+        <!-- AWS SDK for Glue Schema Registry -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>glue</artifactId>
+            <version>${aws.sdk.version}</version>
+        </dependency>
+
         <!-- AWS MSK IAM Auth -->
         <dependency>
             <groupId>software.amazon.msk</groupId>

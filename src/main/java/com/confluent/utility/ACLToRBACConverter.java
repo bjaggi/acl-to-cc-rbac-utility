@@ -46,8 +46,11 @@ public class ACLToRBACConverter {
     
     public static class MSKACLData {
         public List<ACLBinding> acls;
+        public List<TopicInfo> topics;
         public ClusterMetadata cluster_metadata;
-        public int count;
+        public int count;           // Backward compatibility
+        public int acl_count;       // New field
+        public int topic_count;     // New field
         public String exported_at;
     }
     
@@ -139,7 +142,16 @@ public class ACLToRBACConverter {
             throw new IOException("Input file does not exist: " + inputFile);
         }
         
-        return objectMapper.readValue(file, MSKACLData.class);
+        try {
+            return objectMapper.readValue(file, MSKACLData.class);
+        } catch (com.fasterxml.jackson.core.JsonParseException e) {
+            if (e.getMessage().contains("Unexpected character ('#'")) {
+                throw new IOException("JSON file contains comments starting with '#'. " +
+                    "JSON files cannot contain comments. Please remove all comments from the file: " + inputFile, e);
+            } else {
+                throw new IOException("Invalid JSON format in file: " + inputFile + ". " + e.getMessage(), e);
+            }
+        }
     }
     
     /**
@@ -148,7 +160,8 @@ public class ACLToRBACConverter {
     public ConfluentCloudRBACOutput convertToConfluentCloudRBAC(MSKACLData mskData, 
                                                                 String targetEnvironment, 
                                                                 String targetClusterId) {
-        logger.info("Converting {} ACLs to Confluent Cloud RBAC format", mskData.count);
+        int aclCount = mskData.acl_count > 0 ? mskData.acl_count : mskData.count;
+        logger.info("Converting {} ACLs to Confluent Cloud RBAC format", aclCount);
         
         ConfluentCloudRBACOutput output = new ConfluentCloudRBACOutput();
         
@@ -157,7 +170,7 @@ public class ACLToRBACConverter {
             output.conversion_metadata.source_cluster = mskData.cluster_metadata.cluster_name;
             output.conversion_metadata.source_region = mskData.cluster_metadata.region;
         }
-        output.conversion_metadata.original_acl_count = mskData.count;
+        output.conversion_metadata.original_acl_count = aclCount;
         
         // Track role bindings to avoid duplicates
         Set<String> processedBindings = new HashSet<>();
@@ -203,7 +216,7 @@ public class ACLToRBACConverter {
         addConversionNotes(output.conversion_metadata, mskData);
         
         logger.info("Converted {} ACLs to {} role bindings", 
-                   mskData.count, output.role_bindings.size());
+                   aclCount, output.role_bindings.size());
         
         return output;
     }
@@ -364,19 +377,27 @@ public class ACLToRBACConverter {
      * Main method for command-line usage
      */
     public static void main(String[] args) {
-        if (args.length < 1) {
-            System.err.println("Usage: java ACLToRBACConverter <input_file> [output_file] [environment] [cluster_id]");
-            System.err.println("  input_file  - Path to MSK ACLs JSON file (e.g., msk_acls.json)");
-            System.err.println("  output_file - Output file for Confluent Cloud RBAC (default: cc_rbac.json)");
-            System.err.println("  environment - Target Confluent Cloud environment (default: env-xxxxx)");
-            System.err.println("  cluster_id  - Target Confluent Cloud cluster ID (default: lkc-xxxxx)");
-            System.exit(1);
+        // Check for help flag
+        if (args.length > 0 && (args[0].equals("-h") || args[0].equals("--help"))) {
+            System.out.println("MSK ACL to Confluent Cloud RBAC Converter");
+            System.out.println("Usage: java ACLToRBACConverter [output_file] [environment] [cluster_id]");
+            System.out.println("  output_file - Output file for Confluent Cloud RBAC (default: generated_jsons/cc_rbac.json)");
+            System.out.println("  environment - Target Confluent Cloud environment (default: env-xxxxx)");
+            System.out.println("  cluster_id  - Target Confluent Cloud cluster ID (default: lkc-xxxxx)");
+            System.out.println("");
+            System.out.println("Note: Input file is always read from generated_jsons/msk_acls.json");
+            System.out.println("");
+            System.out.println("Examples:");
+            System.out.println("  java ACLToRBACConverter");
+            System.out.println("  java ACLToRBACConverter my_rbac.json env-abc123 lkc-xyz789");
+            System.exit(0);
         }
         
-        String inputFile = args[0];
-        String outputFile = args.length > 1 ? args[1] : "cc_rbac.json";
-        String environment = args.length > 2 ? args[2] : "env-xxxxx";
-        String clusterId = args.length > 3 ? args[3] : "lkc-xxxxx";
+        // Always read from generated_jsons/msk_acls.json
+        String inputFile = "generated_jsons/msk_acls.json";
+        String outputFile = args.length > 0 ? args[0] : "generated_jsons/cc_rbac.json";
+        String environment = args.length > 1 ? args[1] : "env-xxxxx";
+        String clusterId = args.length > 2 ? args[2] : "lkc-xxxxx";
         
         ACLToRBACConverter converter = new ACLToRBACConverter();
         
