@@ -66,22 +66,22 @@ if [ $? -eq 0 ]; then
     # Remove any existing JARs from release folder
     rm -f "$RELEASE_DIR"/*.jar
     
-    # Copy JAR to release folder with consistent name
-    JAR_FILE="target/acl-to-rbac-converter.jar"
-    RELEASE_JAR="$RELEASE_DIR/acl-to-rbac-converter.jar"
+    # Copy unified JAR to release folder
+    JAR_FILE="target/msk-to-confluent-cloud.jar"
+    RELEASE_JAR="$RELEASE_DIR/msk-to-confluent-cloud.jar"
     
-    echo "📦 Copying JAR to release folder..."
+    echo "📦 Copying unified JAR to release folder..."
     cp "$JAR_FILE" "$RELEASE_JAR"
     
     if [ $? -eq 0 ]; then
-        echo "✅ JAR copied to: $RELEASE_JAR"
+        echo "✅ Unified JAR copied to: $RELEASE_JAR"
     else
-        echo "⚠️  Warning: Failed to copy JAR to release folder"
+        echo "⚠️  Warning: Failed to copy unified JAR to release folder"
     fi
     
     echo ""
     echo "🚀 You can now run the utility with:"
-          echo "   ./scripts/extract-msk-metadata.sh --help"
+          echo "   ./scripts/extract_msk_metadata/extract-msk-metadata.sh --help"
     echo "   or"
     echo "   java -jar $JAR_FILE --help"
 else
@@ -89,12 +89,11 @@ else
     exit 1
 fi
 
-# Make run script executable
-      chmod +x extract-msk-metadata.sh
-chmod +x extract-acls.sh
+# Make all shell scripts executable
+echo "🔧 Making all shell scripts executable..."
+find scripts -name "*.sh" -type f -exec chmod +x {} \;
 
 echo ""
-echo "🔧 Shell scripts made executable:"
-echo "   build.sh (this script)"
-      echo "   extract-msk-metadata.sh (MSK metadata extractor)"
-echo "   extract-acls.sh (comprehensive script with examples)" 
+echo "✅ All shell scripts in the scripts folder are now executable:"
+
+done 

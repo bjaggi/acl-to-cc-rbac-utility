@@ -1,22 +1,21 @@
-# MSK ACL to Confluent Cloud RBAC Utility
+# MSK to Confluent Cloud Migration Utility
 
-This Java-based utility connects to Amazon MSK (Managed Streaming for Apache Kafka) clusters and extracts all Access Control Lists (ACLs) to a JSON file. The exported ACLs can then be used for migration to Confluent Cloud RBAC (Role-Based Access Control).
+A comprehensive Java-based utility that extracts metadata from Amazon MSK (Managed Streaming for Apache Kafka) clusters and facilitates migration to Confluent Cloud with automated RBAC (Role-Based Access Control) setup.
 
-## Features
+## 🚀 Features
 
-- ✅ Connect to Amazon MSK clusters using various authentication methods
-- ✅ Export all ACLs to structured JSON format
-- ✅ Support for SSL, SASL_SSL, and IAM authentication
-- ✅ **Automatic JAVA_HOME detection and setup**
-- ✅ **Smart bootstrap server selection** (fixes port/authentication mismatches)
-- ✅ **Robust SSL configuration handling** (handles invalid truststore paths)
-- ✅ Include cluster metadata in export
-- ✅ Interactive mode for easy configuration
-- ✅ Configuration file support
-- ✅ Comprehensive logging and error handling
-- ✅ Shell scripts for building and running
+- ✅ **Complete MSK Metadata Extraction**: ACLs, Topics, and Schemas (all versions)
+- ✅ **Automated Schema Registry Integration**: AWS Glue Schema Registry support
+- ✅ **Confluent Cloud RBAC Conversion**: Convert MSK ACLs to CC role bindings
+- ✅ **Automated RBAC Application**: Automatically apply roles to Confluent Cloud
+- ✅ **Service Account Management**: Auto-create and manage service accounts
+- ✅ **Multiple Authentication Methods**: SSL, SASL_SSL, and IAM authentication
+- ✅ **Smart Configuration**: Automatic JAVA_HOME detection and bootstrap server selection
+- ✅ **Comprehensive Logging**: Detailed logging with configurable levels
+- ✅ **Dry Run Mode**: Preview changes before applying
+- ✅ **End-to-End Workflow**: Complete migration pipeline from MSK to Confluent Cloud
 
-## Prerequisites
+## 📋 Prerequisites
 
 - **Java 11 or higher** (Java 17 recommended)
   - For Amazon Linux/EC2: `sudo yum install java-17-amazon-corretto`
@@ -24,57 +23,230 @@ This Java-based utility connects to Amazon MSK (Managed Streaming for Apache Kaf
 - **Maven 3.6 or higher**
   - For Amazon Linux: `sudo yum install maven`
   - For Ubuntu/Debian: `sudo apt-get install maven`
-- **JAVA_HOME environment variable** properly set
-  - The build and run scripts will attempt to set this automatically
-  - Manual setup: `export JAVA_HOME=/usr/lib/jvm/java-17-amazon-corretto`
+- **Confluent CLI** (for automated RBAC application)
+  - Install from: https://docs.confluent.io/confluent-cli/current/install.html
 - **AWS credentials configured** (via AWS CLI, environment variables, or IAM roles)
   - Test with: `aws sts get-caller-identity`
 - **Network access to your MSK cluster**
   - Ensure security groups allow connections from your IP
 
-## Quick Start
+## ⚡ Quick Start - Complete Migration
 
-1. **Make scripts executable:**
-   ```bash
-   chmod +x build.sh extract-msk-metadata.sh extract-acls.sh
-   ```
-
-2. **Build the application:**
-   ```bash
-   ./build.sh
-   ```
-
-3. **Configure MSK connection in msk.config:**
-   ```bash
-   # Edit msk.config with your actual MSK cluster details
-   vi msk.config
-   ```
-
-4. **Extract ACLs and topics from MSK:**
-   ```bash
-   ./extract-msk-metadata.sh
-   ```
-
-5. **Convert to Confluent Cloud RBAC (optional):**
-   ```bash
-   ./scripts/convert-acl-to-rbac.sh -e env-12345 -c lkc-67890
-   ```
-
-## Alternative: Advanced Usage with extract-acls.sh
-
-For advanced usage, interactive mode, or custom configurations:
-
+### 1. **Setup and Build**
 ```bash
-# Interactive mode
+# Make scripts executable
+chmod +x build.sh scripts/extract_msk_metadata/extract-msk-metadata.sh scripts/create_cc_infra/create-cc-topics.sh scripts/create_cc_infra/create-cc-rbac.sh
+
+# Build the application
+./build.sh
+```
+
+### 2. **Configure MSK Connection**
+```bash
+# Edit msk.config with your actual MSK cluster details
+vi msk.config
+```
+
+### 3. **Configure Confluent Cloud Connection**
+```bash
+# Create Confluent Cloud configuration
+vi generated_jsons/ccloud.config
+```
+Add your Confluent Cloud details:
+```properties
+# Confluent Cloud Configuration
+confluent.cloud.environment=env-12345
+confluent.cloud.cluster=lkc-67890
+confluent.cloud.organization=YOUR_ORG_ID
+
+# Kafka API Keys (for topic operations)
+sasl.username=YOUR_KAFKA_API_KEY
+sasl.password=YOUR_KAFKA_API_SECRET
+bootstrap.servers=pkc-xxxxx.region.aws.confluent.cloud:9092
+security.protocol=SASL_SSL
+sasl.mechanisms=PLAIN
+
+# Cloud API Keys (for RBAC operations)
+confluent_cloud_key=YOUR_CLOUD_API_KEY
+confluent_cloud_secret=YOUR_CLOUD_API_SECRET
+```
+
+**⚠️ Important**: You need **both** Kafka API keys AND Cloud API keys with proper permissions. See [API_KEYS_AND_PERMISSIONS.md](API_KEYS_AND_PERMISSIONS.md) for details.
+
+### 4. **Run Complete Migration**
+```bash
+# Step 1: Extract all MSK metadata and auto-convert ACLs to RBAC
+./scripts/extract_msk_metadata/extract-msk-metadata.sh
+
+# Step 2: Create topics in Confluent Cloud
+./scripts/create_cc_infra/create-cc-topics.sh
+
+# Step 3: Create RBAC role bindings in Confluent Cloud
+./scripts/create_cc_infra/create-cc-rbac.sh
+```
+
+**That's it!** 🎉 Your MSK ACLs are now converted and applied as RBAC in Confluent Cloud.
+
+## 📁 Project Organization
+
+### Scripts Organization
+
+Scripts are organized by functionality:
+
+```
+scripts/
+├── extract_msk_metadata/          # MSK data extraction
+│   ├── extract-msk-metadata.sh   # Main extraction script
+│   └── README.md                  # Documentation
+├── create_cc_infra/               # Confluent Cloud infrastructure
+│   ├── create-cc-topics.sh       # Topic creation
+│   ├── create-cc-rbac.sh         # RBAC creation
+│   └── README.md                  # Documentation
+└── convert-acl-to-rbac.sh         # ACL to RBAC conversion
+```
+
+### Generated Files
+
+All generated files are organized in the `generated_jsons/` folder:
+
+```
+generated_jsons/
+├── msk_acls.json        # Extracted MSK ACLs
+├── msk_topics.json      # Extracted MSK topics with configurations
+├── msk_principals.json  # Unique principals extracted from ACLs
+├── msk_schemas.json     # Extracted schemas (all versions)
+└── cc_rbac.json         # Auto-converted Confluent Cloud RBAC rules
+```
+
+## 🔧 Detailed Usage
+
+### MSK Metadata Extraction
+
+**Extract ACLs, Topics, Principals, and Schemas + Auto-Convert to RBAC:**
+```bash
+./scripts/extract_msk_metadata/extract-msk-metadata.sh
+```
+
+This script:
+- Reads configuration from `msk.config`
+- Extracts all ACLs from MSK cluster
+- Extracts all topics with configurations
+- Extracts unique principals from ACLs
+- Extracts all schemas from AWS Glue Schema Registry (all versions)
+- **Automatically converts ACLs to Confluent Cloud RBAC format**
+- Outputs to `generated_jsons/` folder
+
+**Advanced Usage:**
+```bash
+# Interactive mode with flexible configuration
 ./extract-acls.sh --interactive
 
 # Direct command line
 ./extract-acls.sh --cluster-arn arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123
 ```
 
-## Authentication Methods
+### RBAC Conversion
 
-The utility automatically selects the correct bootstrap servers and ports based on your authentication method:
+**Convert MSK ACLs to Confluent Cloud RBAC:**
+```bash
+./scripts/convert-acl-to-rbac.sh [OPTIONS]
+
+Options:
+  -i, --input FILE        Input MSK ACLs JSON file (default: generated_jsons/msk_acls.json)
+  -o, --output FILE       Output CC RBAC JSON file (default: generated_jsons/cc_jsons/cc_rbac.json)
+  -e, --environment ENV   Target Confluent Cloud environment ID (required)
+  -c, --cluster CLUSTER   Target Confluent Cloud cluster ID (required)
+  -h, --help              Show help message
+
+Examples:
+  # Basic conversion
+  ./scripts/convert-acl-to-rbac.sh -e env-12345 -c lkc-67890
+  
+  # Custom input/output files
+  ./scripts/convert-acl-to-rbac.sh -i my_acls.json -o my_rbac.json -e env-12345 -c lkc-67890
+```
+
+### Automated RBAC Application
+
+**Create RBAC rules in Confluent Cloud:**
+```bash
+./scripts/create_cc_infra/create-cc-rbac.sh [OPTIONS]
+
+Options:
+  -f, --file FILE         RBAC JSON file (default: generated_jsons/cc_jsons/cc_rbac.json)
+  -c, --config FILE       Confluent Cloud config file (default: generated_jsons/ccloud.config)
+  -d, --dry-run           Show commands without executing them
+  -v, --verbose           Enable verbose output
+  --no-service-accounts   Skip service account creation
+  -h, --help              Show help message
+
+Examples:
+  # Create with default configuration
+  ./scripts/create_cc_infra/create-cc-rbac.sh
+  
+  # Dry run to preview changes
+  ./scripts/create_cc_infra/create-cc-rbac.sh --dry-run
+  
+  # Verbose output
+  ./scripts/create_cc_infra/create-cc-rbac.sh --verbose
+```
+
+This script automatically:
+- ✅ Reads Confluent Cloud configuration
+- ✅ Authenticates using API keys
+- ✅ Creates service accounts (if they don't exist)
+- ✅ Applies all role bindings
+- ✅ Verifies the applied role bindings
+
+### Topic Creation
+
+**Create Topics in Confluent Cloud:**
+```bash
+./scripts/create_cc_infra/create-cc-topics.sh [OPTIONS]
+
+Options:
+  -f, --file FILE         Topics JSON file (default: generated_jsons/msk_topics.json)
+  -c, --config FILE       Confluent Cloud config file (default: ccloud.config)
+  -d, --dry-run           Show what would be created without executing
+  -v, --verbose           Enable verbose output
+  -h, --help              Show help message
+
+Examples:
+  # Create topics with default configuration
+  ./scripts/create_cc_infra/create-cc-topics.sh
+  
+  # Dry run to preview topic creation
+  ./scripts/create_cc_infra/create-cc-topics.sh --dry-run
+  
+  # Verbose output
+  ./scripts/create_cc_infra/create-cc-topics.sh --verbose
+```
+
+This script automatically creates topics in Confluent Cloud based on MSK topic configurations.
+
+## 🔑 API Keys and Permissions
+
+**⚠️ IMPORTANT**: This utility requires **two different types of API keys** with specific permissions. See [API_KEYS_AND_PERMISSIONS.md](API_KEYS_AND_PERMISSIONS.md) for detailed requirements.
+
+### Quick Summary
+
+| Operation | API Key Type | Required Role | Configuration Property |
+|-----------|-------------|---------------|----------------------|
+| **RBAC Operations** | Cloud API Keys | OrganizationAdmin or EnvironmentAdmin | `confluent_cloud_key` / `confluent_cloud_secret` |
+| **Topic Operations** | Kafka API Keys | DeveloperRead or Operator | `sasl.username` / `sasl.password` |
+
+### Common Issues
+
+- **400 Bad Request for Role Bindings**: Cloud API keys lack OrganizationAdmin/EnvironmentAdmin permissions for **creation** operations (basic keys can list but not create)
+- **401 Unauthorized**: Wrong API key type being used for the operation  
+- **Cannot List Topics**: Kafka API keys lack read permissions
+- **Role Binding Listing Fails**: Missing organization ID in configuration (required for CRN pattern)
+
+📖 **For complete setup instructions, troubleshooting, and examples, see [API_KEYS_AND_PERMISSIONS.md](API_KEYS_AND_PERMISSIONS.md)**
+
+## 🔐 Authentication Methods
+
+### MSK Authentication
 
 | Authentication Method | Security Protocol | Port | Bootstrap Server Type |
 |-----------------------|-------------------|------|----------------------|
@@ -83,12 +255,12 @@ The utility automatically selects the correct bootstrap servers and ports based 
 | **SCRAM**             | `SASL_SSL`       | 9096 | SASL_SCRAM          |
 | **Plaintext**         | `PLAINTEXT`      | 9092 | Plaintext           |
 
-### SSL (Default)
+#### SSL (Default)
 ```bash
 ./extract-acls.sh --cluster-arn arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123
 ```
 
-### IAM Authentication (Recommended for MSK)
+#### IAM Authentication (Recommended for MSK)
 ```bash
 ./extract-acls.sh \
   --cluster-arn arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123 \
@@ -96,7 +268,7 @@ The utility automatically selects the correct bootstrap servers and ports based 
   --sasl-mechanism AWS_MSK_IAM
 ```
 
-### SCRAM Authentication
+#### SCRAM Authentication
 ```bash
 ./extract-acls.sh \
   --cluster-arn arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123 \
@@ -106,67 +278,53 @@ The utility automatically selects the correct bootstrap servers and ports based 
   --sasl-password mypassword
 ```
 
-## Usage Options
+### Confluent Cloud Authentication
 
-### Command Line Interface
+The utility supports API Key authentication for Confluent Cloud:
 
-```bash
-./extract-acls.sh [OPTIONS]
-
-Options:
-  -h, --help              Show help message
-  -i, --interactive       Run in interactive mode
-  -c, --config FILE       Use configuration file
-  --cluster-arn ARN       MSK cluster ARN (required)
-  --region REGION         AWS region (default: us-east-1)
-  --output-file FILE      Output JSON file
-  --security-protocol     Security protocol (SSL, SASL_SSL, etc.)
-  --sasl-mechanism        SASL mechanism (AWS_MSK_IAM, SCRAM-SHA-256, etc.)
-  --sasl-username         SASL username
-  --sasl-password         SASL password
-  --no-metadata           Exclude cluster metadata
-  --verbose               Enable verbose logging
-```
-
-### Configuration File
-
-Create and use a configuration file for repeated use:
-
-```bash
-# Create a sample configuration file
-./extract-acls.sh --create-sample-config
-
-# Copy and edit the configuration file
-cp config.properties.sample config.properties
-# Edit config.properties with your MSK cluster details
-
-# Run with configuration file
-./extract-acls.sh --config config.properties
-```
-
-**Configuration File Format:**
 ```properties
-# Required settings
-cluster.arn=arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123
+# In generated_jsons/ccloud.config
+confluent.cloud.environment=env-12345
+confluent.cloud.cluster=lkc-67890
+confluent.cloud.region=us-east-1
 
-# Optional settings
+# Authentication
+sasl.username=YOUR_API_KEY
+sasl.password=YOUR_API_SECRET
+bootstrap.servers=pkc-xxxxx.region.aws.confluent.cloud:9092
+security.protocol=SASL_SSL
+sasl.mechanisms=PLAIN
+
+# Optional: Schema Registry
+# schema.registry.url=https://psrc-xxxxx.region.aws.confluent.cloud
+# schema.registry.basic.auth.user.info=SR_API_KEY:SR_API_SECRET
+```
+
+## 📝 Configuration Files
+
+### MSK Configuration (msk.config)
+
+**Sample for IAM Authentication:**
+```properties
+# MSK cluster configuration
+cluster.arn=arn:aws:kafka:us-east-1:123456789012:cluster/my-msk-cluster/abc-123-def-456
 aws.region=us-east-1
-output.file=msk_acls.json
-security.protocol=SSL
+
+# IAM Authentication (Recommended)
+security.protocol=SASL_SSL
 sasl.mechanism=AWS_MSK_IAM
-output.no-metadata=false
-logging.verbose=false
+sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required;
+sasl.client.callback.handler.class=software.amazon.msk.auth.iam.IAMClientCallbackHandler
+
+# Client settings
+client.id=msk-acl-extractor
+request.timeout.ms=30000
+admin.request.timeout.ms=60000
 ```
 
-The configuration file supports both dot-notation (`cluster.arn`) and uppercase (`CLUSTER_ARN`) property names for backward compatibility.
-
-### MSK Properties File
-
-For more advanced MSK-specific configurations, you can also create a dedicated `msk.properties` file:
-
-**Sample msk.properties for SSL (Default):**
+**Sample for SSL Authentication:**
 ```properties
-# Basic MSK cluster configuration
+# MSK cluster configuration
 cluster.arn=arn:aws:kafka:us-east-1:123456789012:cluster/my-msk-cluster/abc-123-def-456
 aws.region=us-east-1
 
@@ -180,59 +338,39 @@ request.timeout.ms=30000
 admin.request.timeout.ms=60000
 ```
 
-**Sample msk.properties for IAM Authentication:**
+### Confluent Cloud Configuration (generated_jsons/ccloud.config)
+
 ```properties
-# Basic MSK cluster configuration
-cluster.arn=arn:aws:kafka:us-east-1:123456789012:cluster/my-msk-cluster/abc-123-def-456
-aws.region=us-east-1
+# Confluent Cloud Configuration
+confluent.cloud.environment=env-12345
+confluent.cloud.cluster=lkc-67890
+confluent.cloud.region=us-east-1
 
-# IAM Authentication (Recommended for MSK)
+# Kafka API Keys (for topic operations)
+sasl.username=YOUR_KAFKA_API_KEY
+sasl.password=YOUR_KAFKA_API_SECRET
+bootstrap.servers=pkc-xxxxx.region.aws.confluent.cloud:9092
 security.protocol=SASL_SSL
-sasl.mechanism=AWS_MSK_IAM
-sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required;
-sasl.client.callback.handler.class=software.amazon.msk.auth.iam.IAMClientCallbackHandler
+sasl.mechanisms=PLAIN
 
-# Client settings
-client.id=msk-acl-extractor
-request.timeout.ms=30000
-admin.request.timeout.ms=60000
+# Cloud API Keys (for RBAC operations)
+confluent_cloud_key=YOUR_CLOUD_API_KEY
+confluent_cloud_secret=YOUR_CLOUD_API_SECRET
+
+# Optional: Schema Registry
+# schema.registry.url=https://psrc-xxxxx.region.aws.confluent.cloud
+# schema.registry.basic.auth.user.info=SR_API_KEY:SR_API_SECRET
 ```
 
-**Sample msk.properties for SCRAM Authentication:**
-```properties
-# Basic MSK cluster configuration
-cluster.arn=arn:aws:kafka:us-east-1:123456789012:cluster/my-msk-cluster/abc-123-def-456
-aws.region=us-east-1
+**📖 See [API_KEYS_AND_PERMISSIONS.md](API_KEYS_AND_PERMISSIONS.md) for detailed information about:**
+- How to create the required API keys
+- What permissions each type of API key needs
+- Troubleshooting permission issues
+- Best practices for API key management
 
-# SCRAM Authentication
-security.protocol=SASL_SSL
-sasl.mechanism=SCRAM-SHA-256
-sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username="your-username" password="your-password";
+## 📊 Output Formats
 
-# Client settings
-client.id=msk-acl-extractor
-request.timeout.ms=30000
-admin.request.timeout.ms=60000
-```
-
-**Usage with MSK properties:**
-```bash
-# Create your msk.properties file with the appropriate configuration above
-# Then run:
-./extract-acls.sh --config msk.properties
-```
-
-### Interactive Mode
-
-For guided setup:
-```bash
-./extract-acls.sh --interactive
-```
-
-## Output Format
-
-The utility generates a JSON file with the following structure:
-
+### MSK ACLs Output (generated_jsons/msk_acls.json)
 ```json
 {
   "acls": [
@@ -246,7 +384,7 @@ The utility generates a JSON file with the following structure:
       "pattern_type": "LITERAL"
     }
   ],
-  "count": 1,
+  "acl_count": 1,
   "exported_at": "2024-01-01T12:00:00",
   "cluster_metadata": {
     "cluster_name": "my-cluster",
@@ -260,22 +398,146 @@ The utility generates a JSON file with the following structure:
 }
 ```
 
-## Building and Running
-
-### Build Scripts
-
-- `build.sh` - Build the Java application using Maven
-- `extract-msk-metadata.sh` - Simple MSK metadata extractor (reads from msk.config) - extracts ACLs, topics, and schemas
-- `extract-acls.sh` - Advanced script with interactive mode and flexible configuration
-
-### Manual Build
-
-```bash
-mvn clean package
-java -jar target/acl-to-cc-rbac-utility-1.0.0.jar --help
+### MSK Topics Output (generated_jsons/msk_topics.json)
+```json
+{
+  "topics": [
+    {
+      "name": "my-topic",
+      "partitions": 3,
+      "replication_factor": 2,
+      "configs": {
+        "retention.ms": "86400000",
+        "compression.type": "producer"
+      }
+    }
+  ],
+  "topic_count": 1,
+  "exported_at": "2024-01-01T12:00:00"
+}
 ```
 
-## Troubleshooting
+### MSK Schemas Output (generated_jsons/msk_schemas.json)
+```json
+{
+  "schemas": [
+    {
+      "schema_id": "arn:aws:glue:us-east-1:123456789012:schema/registry1/schema1",
+      "schema_name": "UserEvent",
+      "registry_name": "registry1",
+      "data_format": "AVRO",
+      "compatibility": "BACKWARD",
+      "version_number": 1,
+      "version_id": "abc-123-def-456",
+      "schema_definition": "{\"type\":\"record\",\"name\":\"UserEvent\"...}",
+      "status": "AVAILABLE",
+      "created_time": "2024-01-01T12:00:00",
+      "updated_time": "2024-01-01T12:00:00"
+    }
+  ],
+  "schema_count": 5,
+  "exported_at": "2024-01-01T12:00:00"
+}
+```
+
+### Confluent Cloud RBAC Output (generated_jsons/cc_jsons/cc_rbac.json)
+```json
+{
+  "role_bindings": [
+    {
+      "principal": "alice",
+      "role": "DeveloperRead",
+      "resource_type": "Topic",
+      "resource_name": "my-topic",
+      "pattern_type": "LITERAL",
+      "environment": "env-12345",
+      "cluster_id": "lkc-67890"
+    }
+  ],
+  "service_accounts": [
+    {
+      "name": "alice-service-account",
+      "description": "Service account for alice (converted from MSK ACL)",
+      "original_principal": "User:alice"
+    }
+  ],
+  "conversion_metadata": {
+    "source_cluster": "my-cluster",
+    "source_region": "us-east-1",
+    "original_acl_count": 1,
+    "converted_role_bindings_count": 1,
+    "converted_at": "2024-01-01T12:00:00",
+    "conversion_notes": [
+      "Conversion from MSK ACLs to Confluent Cloud RBAC completed",
+      "DENY permissions were skipped as Confluent Cloud uses ALLOW-based RBAC",
+      "Service accounts need to be created in Confluent Cloud before applying role bindings"
+    ]
+  }
+}
+```
+
+## 🔧 Advanced Features
+
+### Schema Registry Support
+
+The utility automatically extracts **all versions** of schemas from AWS Glue Schema Registry:
+
+- ✅ Discovers all registries
+- ✅ Extracts all schemas from each registry  
+- ✅ Gets all versions of each schema (not just latest)
+- ✅ Includes schema definitions, compatibility settings, and metadata
+- ✅ Graceful error handling for missing or inaccessible registries
+
+### RBAC Conversion Details
+
+The conversion process includes intelligent mapping:
+
+| MSK Operation | Confluent Cloud Role | Resource Type |
+|---------------|---------------------|---------------|
+| READ          | DeveloperRead       | Topic, Group  |
+| WRITE         | DeveloperWrite      | Topic         |
+| CREATE        | DeveloperManage     | Topic         |
+| DELETE        | ResourceOwner       | Topic         |
+| ALTER         | ResourceOwner       | Topic         |
+| DESCRIBE      | DeveloperRead       | Topic         |
+| ALTER_CONFIGS | ResourceOwner       | Topic         |
+| All Cluster   | ClusterAdmin        | Cluster       |
+
+**Key Conversion Features:**
+- ✅ Automatically skips DENY permissions (Confluent Cloud uses ALLOW-based RBAC)
+- ✅ Creates service account metadata for each unique principal
+- ✅ Sanitizes service account names for Confluent Cloud compatibility
+- ✅ Includes detailed conversion notes and metadata
+- ✅ Tracks conversion statistics
+
+### Service Account Management
+
+The automated RBAC application includes:
+
+- ✅ **Auto-discovery**: Extracts unique principals from RBAC data
+- ✅ **Duplicate Prevention**: Checks for existing service accounts
+- ✅ **Name Sanitization**: Ensures CC-compatible naming
+- ✅ **Batch Creation**: Creates all required service accounts
+- ✅ **Error Handling**: Graceful handling of creation failures
+
+## 🛠 Building and Running
+
+### Available Scripts
+
+- `build.sh` - Build the Java application using Maven
+- `scripts/extract_msk_metadata/extract-msk-metadata.sh` - Extract MSK metadata (ACLs, topics, schemas, principals)
+- `scripts/convert-acl-to-rbac.sh` - Convert ACLs to Confluent Cloud RBAC format
+- `scripts/apply-rbac-to-cc-auto.sh` - Automatically apply RBAC to Confluent Cloud
+- `scripts/create_cc_infra/create-cc-rbac.sh` - RBAC creation in Confluent Cloud
+
+### Manual Build
+```bash
+mvn clean package
+java -jar release/msk-acl-extractor.jar --help
+java -jar release/acl-to-rbac-converter.jar --help
+```
+
+## 🔍 Troubleshooting
 
 ### Common Issues
 
@@ -283,61 +545,45 @@ java -jar target/acl-to-cc-rbac-utility-1.0.0.jar --help
    ```
    The JAVA_HOME environment variable is not defined correctly
    ```
-   **Solution:**
-   - The build and run scripts automatically detect and set JAVA_HOME
-   - For manual setup: `export JAVA_HOME=/usr/lib/jvm/java-17-amazon-corretto`
-   - Verify with: `echo $JAVA_HOME && java -version`
+   **Solution:** Build scripts automatically detect and set JAVA_HOME
+   ```bash
+   export JAVA_HOME=/usr/lib/jvm/java-17-amazon-corretto
+   echo $JAVA_HOME && java -version
+   ```
 
 2. **SSL Keystore Loading Error**
    ```
    KafkaException: Failed to load SSL keystore of type JKS
-   Caused by: java.io.IOException: Is a directory
    ```
-   **Solution:**
-   - This happens when SSL truststore points to a directory instead of a file
-   - The application now automatically handles this by skipping invalid truststore paths
-   - For SASL_SSL with IAM: No truststore configuration needed
+   **Solution:** Application automatically handles invalid truststore paths
 
 3. **Wrong Bootstrap Server Port Error**
    ```
-   Unexpected handshake request with client mechanism AWS_MSK_IAM, enabled mechanisms are []
+   Unexpected handshake request with client mechanism AWS_MSK_IAM
    ```
-   **Solution:**
-   - This happens when using wrong port for authentication method
-   - Fixed: Application now automatically selects correct bootstrap servers:
-     - `SASL_SSL` with `AWS_MSK_IAM` → Uses port 9098 (SASL_IAM servers)
-     - `SSL` → Uses port 9094 (TLS servers)
-     - `SASL_SSL` with `SCRAM` → Uses port 9096 (SASL_SCRAM servers)
+   **Solution:** Application automatically selects correct ports based on auth method
 
 4. **AWS Credentials Error**
-   - Ensure AWS credentials are configured: `aws configure` or `aws sts get-caller-identity`
-   - Check if credentials have required MSK permissions (see Permissions section below)
+   ```bash
+   aws configure
+   aws sts get-caller-identity
+   ```
 
-5. **Connection Timeout**
-   - Check network connectivity to MSK cluster
-   - Verify security groups allow access from your IP
-   - For port 9098 (SASL_IAM), ensure security group allows TCP 9098
+5. **Confluent CLI Authentication Error**
+   ```bash
+   confluent login
+   # Or use automated script with API keys
+   ./scripts/apply-rbac-to-cc-auto.sh
+   ```
 
-6. **Authentication Failed**
-   - For IAM auth: Ensure your AWS credentials have necessary MSK permissions
-   - For SCRAM: Verify username/password are correct
-   - Check that the authentication method matches your MSK cluster configuration
+6. **Schema Registry Access Denied**
+   - Ensure AWS credentials have Glue Schema Registry permissions
+   - Check if registries exist in the specified region
+   - Application gracefully handles missing registries
 
-### Permissions Required
+### Required AWS Permissions
 
-For IAM authentication, your AWS credentials need these permissions:
-
-**MSK Cluster Permissions:**
-- `kafka:DescribeCluster`
-- `kafka:GetBootstrapBrokers`
-
-**MSK Connect Permissions:**
-- `kafka-cluster:Connect` (for cluster ARN)
-- `kafka-cluster:DescribeCluster` (for cluster ARN)
-- `kafka-cluster:AlterCluster` (if modifying ACLs)
-- `kafka-cluster:DescribeClusterDynamicConfiguration`
-
-**Example IAM Policy:**
+**For MSK:**
 ```json
 {
   "Version": "2012-10-17",
@@ -346,16 +592,9 @@ For IAM authentication, your AWS credentials need these permissions:
       "Effect": "Allow",
       "Action": [
         "kafka:DescribeCluster",
-        "kafka:GetBootstrapBrokers"
-      ],
-      "Resource": "arn:aws:kafka:*:*:cluster/*"
-    },
-    {
-      "Effect": "Allow", 
-      "Action": [
+        "kafka:GetBootstrapBrokers",
         "kafka-cluster:Connect",
-        "kafka-cluster:DescribeCluster",
-        "kafka-cluster:DescribeClusterDynamicConfiguration"
+        "kafka-cluster:DescribeCluster"
       ],
       "Resource": "arn:aws:kafka:*:*:cluster/*"
     }
@@ -363,11 +602,35 @@ For IAM authentication, your AWS credentials need these permissions:
 }
 ```
 
+**For Schema Registry:**
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "glue:ListRegistries",
+    "glue:ListSchemas",
+    "glue:GetSchema",
+    "glue:ListSchemaVersions",
+    "glue:GetSchemaVersion"
+  ],
+  "Resource": "*"
+}
+```
+
 ### Logs
 
-Check logs in the `logs/` directory for detailed error information:
+Check detailed logs in:
 - `logs/msk-acl-extractor.log`
 
-## License
+## 🚀 Migration Best Practices
+
+1. **Test First**: Always use `--dry-run` to preview changes
+2. **Incremental Migration**: Start with a subset of ACLs/topics
+3. **Verify Permissions**: Test access after applying role bindings
+4. **Monitor Logs**: Check both MSK and Confluent Cloud logs
+5. **Backup ACLs**: Keep a copy of original MSK ACLs
+6. **Service Account Keys**: Generate and store API keys for new service accounts
+
+## 📄 License
 
 This project is licensed under the Apache License 2.0.

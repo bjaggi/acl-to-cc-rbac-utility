@@ -6,8 +6,8 @@
 set -e
 
 # Default values
-INPUT_FILE="msk_acls.json"
-OUTPUT_FILE="cc_rbac.json"
+INPUT_FILE="generated_jsons/msk_acls.json"
+OUTPUT_FILE="generated_jsons/cc_jsons/cc_rbac.json"
 ENVIRONMENT="env-xxxxx"
 CLUSTER_ID="lkc-xxxxx"
 VERBOSE=false
@@ -20,8 +20,8 @@ MSK ACL to Confluent Cloud RBAC Converter
 Usage: $0 [OPTIONS]
 
 Options:
-    -i, --input FILE        Input MSK ACLs JSON file (default: msk_acls.json)
-    -o, --output FILE       Output Confluent Cloud RBAC JSON file (default: cc_rbac.json)
+    -i, --input FILE        Input MSK ACLs JSON file (default: generated_jsons/msk_acls.json)
+    -o, --output FILE       Output Confluent Cloud RBAC JSON file (default: generated_jsons/cc_jsons/cc_rbac.json)
     -e, --environment ENV   Target Confluent Cloud environment ID (e.g., env-12345)
     -c, --cluster CLUSTER   Target Confluent Cloud cluster ID (e.g., lkc-67890)
     -v, --verbose           Enable verbose logging
@@ -140,7 +140,7 @@ check_maven() {
 
 # Build the application if needed
 build_application() {
-    if [[ ! -f "target/acl-to-rbac-converter.jar" ]]; then
+    if [[ ! -f "target/msk-to-confluent-cloud.jar" ]]; then
         print_info "Building the application..."
         if $VERBOSE; then
             mvn clean package
@@ -149,8 +149,8 @@ build_application() {
         fi
         print_success "Application built successfully"
         # Copy to release folder
-        if [[ -f "target/acl-to-rbac-converter.jar" ]]; then
-            cp target/acl-to-rbac-converter.jar release/
+            if [[ -f "target/msk-to-confluent-cloud.jar" ]]; then
+        cp target/msk-to-confluent-cloud.jar release/
             print_info "Copied jar to release folder"
         fi
     else
@@ -165,7 +165,7 @@ validate_input() {
     if [[ ! -f "$REQUIRED_INPUT_FILE" ]]; then
         print_error "Required input file does not exist: $REQUIRED_INPUT_FILE"
         print_error "Please run the MSK ACL extractor first to generate this file:"
-        print_error "  ./scripts/extract-msk-metadata.sh"
+        print_error "  ./scripts/extract_msk_metadata/extract-msk-metadata.sh"
         exit 1
     fi
     
@@ -187,7 +187,7 @@ run_conversion() {
     print_info "Target cluster: $CLUSTER_ID"
     
     # Construct Java command (no longer needs input file as argument)
-    JAVA_CMD="java -jar target/acl-to-rbac-converter.jar"
+    JAVA_CMD="java -jar target/msk-to-confluent-cloud.jar convert"
     JAVA_CMD="$JAVA_CMD \"$OUTPUT_FILE\" \"$ENVIRONMENT\" \"$CLUSTER_ID\""
     
     if $VERBOSE; then

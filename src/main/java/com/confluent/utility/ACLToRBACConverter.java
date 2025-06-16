@@ -73,6 +73,10 @@ public class ACLToRBACConverter {
         public String environment;
         public String cluster_id;
         
+        // Default constructor for Jackson deserialization
+        public ConfluentCloudRoleBinding() {
+        }
+        
         public ConfluentCloudRoleBinding(String principal, String role, String resourceType, 
                                        String resourceName, String patternType, String environment, String clusterId) {
             this.principal = principal;
@@ -101,6 +105,10 @@ public class ACLToRBACConverter {
         public String name;
         public String description;
         public String original_principal;
+        
+        // Default constructor for Jackson deserialization
+        public ServiceAccountInfo() {
+        }
         
         public ServiceAccountInfo(String name, String description, String originalPrincipal) {
             this.name = name;
@@ -235,6 +243,12 @@ public class ACLToRBACConverter {
             return bindings;
         }
         
+        // Skip Group:* patterns as they are not valid in Confluent Cloud RBAC
+        if ("GROUP".equals(acl.getResourceType()) && "*".equals(acl.getResourceName()) && "LITERAL".equals(acl.getPatternType())) {
+            logger.warn("Skipping Group:* ACL as wildcard group names are not supported in Confluent Cloud RBAC: {}", acl);
+            return bindings;
+        }
+        
         // Extract principal - remove "User:" prefix if present
         String principal = acl.getPrincipal();
         if (principal.startsWith("User:")) {
@@ -353,6 +367,7 @@ public class ACLToRBACConverter {
     private void addConversionNotes(ConversionMetadata metadata, MSKACLData mskData) {
         metadata.conversion_notes.add("Conversion from MSK ACLs to Confluent Cloud RBAC completed");
         metadata.conversion_notes.add("DENY permissions were skipped as Confluent Cloud uses ALLOW-based RBAC");
+        metadata.conversion_notes.add("Group:* ACLs were skipped as wildcard group names are not supported in Confluent Cloud RBAC");
         metadata.conversion_notes.add("Service accounts need to be created in Confluent Cloud before applying role bindings");
         metadata.conversion_notes.add("Role assignments may need manual review for complex permission patterns");
         metadata.conversion_notes.add("Ensure target environment and cluster ID are correctly specified");
@@ -364,6 +379,14 @@ public class ACLToRBACConverter {
      */
     public void writeConfluentCloudRBAC(ConfluentCloudRBACOutput rbacData, String outputFile) throws IOException {
         logger.info("Writing Confluent Cloud RBAC data to file: {}", outputFile);
+        
+        // Create output directory if needed
+        java.io.File outputFileObj = new java.io.File(outputFile);
+        java.io.File parentDir = outputFileObj.getParentFile();
+        if (parentDir != null && !parentDir.exists()) {
+            parentDir.mkdirs();
+            logger.info("Created output directory: {}", parentDir.getPath());
+        }
         
         try (FileWriter writer = new FileWriter(outputFile)) {
             objectMapper.writeValue(writer, rbacData);
@@ -381,7 +404,7 @@ public class ACLToRBACConverter {
         if (args.length > 0 && (args[0].equals("-h") || args[0].equals("--help"))) {
             System.out.println("MSK ACL to Confluent Cloud RBAC Converter");
             System.out.println("Usage: java ACLToRBACConverter [output_file] [environment] [cluster_id]");
-            System.out.println("  output_file - Output file for Confluent Cloud RBAC (default: generated_jsons/cc_rbac.json)");
+            System.out.println("  output_file - Output file for Confluent Cloud RBAC (default: generated_jsons/cc_jsons/cc_rbac.json)");
             System.out.println("  environment - Target Confluent Cloud environment (default: env-xxxxx)");
             System.out.println("  cluster_id  - Target Confluent Cloud cluster ID (default: lkc-xxxxx)");
             System.out.println("");
@@ -395,7 +418,7 @@ public class ACLToRBACConverter {
         
         // Always read from generated_jsons/msk_acls.json
         String inputFile = "generated_jsons/msk_acls.json";
-        String outputFile = args.length > 0 ? args[0] : "generated_jsons/cc_rbac.json";
+        String outputFile = args.length > 0 ? args[0] : "generated_jsons/cc_jsons/cc_rbac.json";
         String environment = args.length > 1 ? args[1] : "env-xxxxx";
         String clusterId = args.length > 2 ? args[2] : "lkc-xxxxx";
         

@@ -21,43 +21,16 @@
         <version>3.5.0</version>
         <executions>
           <execution>
-            <id>extractor</id>
+            <id>unified-utility</id>
             <phase>package</phase>
             <goals>
               <goal>shade</goal>
             </goals>
             <configuration>
-              <finalName>msk-acl-extractor</finalName>
+              <finalName>msk-to-confluent-cloud</finalName>
               <transformers>
                 <transformer>
-                  <mainClass>com.confluent.utility.MSKACLExtractor</mainClass>
-                </transformer>
-                <transformer />
-              </transformers>
-              <filters>
-                <filter>
-                  <artifact>*:*</artifact>
-                  <excludes>
-                    <exclude>META-INF/*.SF</exclude>
-                    <exclude>META-INF/*.DSA</exclude>
-                    <exclude>META-INF/*.RSA</exclude>
-                  </excludes>
-                </filter>
-              </filters>
-              <createDependencyReducedPom>true</createDependencyReducedPom>
-            </configuration>
-          </execution>
-          <execution>
-            <id>converter</id>
-            <phase>package</phase>
-            <goals>
-              <goal>shade</goal>
-            </goals>
-            <configuration>
-              <finalName>acl-to-rbac-converter</finalName>
-              <transformers>
-                <transformer>
-                  <mainClass>com.confluent.utility.ACLToRBACConverter</mainClass>
+                  <mainClass>com.confluent.utility.MSKToConfluentCloudUtility</mainClass>
                 </transformer>
                 <transformer />
               </transformers>
