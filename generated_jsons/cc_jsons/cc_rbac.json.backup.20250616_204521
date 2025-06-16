@@ -1,0 +1,45 @@
+{
+  "role_bindings" : [ {
+    "principal" : "jaggi-msk-role",
+    "role" : "DeveloperRead",
+    "resource_type" : "Topic",
+    "resource_name" : "test_rw",
+    "pattern_type" : "LITERAL",
+    "environment" : "env-7qv2p",
+    "cluster_id" : "lkc-y316j",
+    "resource_id" : null
+  }, {
+    "principal" : "jaggi-msk-role",
+    "role" : "DeveloperRead",
+    "resource_type" : "Topic",
+    "resource_name" : "test_r",
+    "pattern_type" : "LITERAL",
+    "environment" : "env-7qv2p",
+    "cluster_id" : "lkc-y316j",
+    "resource_id" : null
+  }, {
+    "principal" : "jaggi-msk-role",
+    "role" : "DeveloperWrite",
+    "resource_type" : "Topic",
+    "resource_name" : "test_w",
+    "pattern_type" : "LITERAL",
+    "environment" : "env-7qv2p",
+    "cluster_id" : "lkc-y316j",
+    "resource_id" : null
+  } ],
+  "service_accounts" : [ {
+    "name" : "jaggi-msk-role",
+    "description" : "Service account for User:jaggi-msk-role (migrated from MSK)",
+    "original_principal" : "User:jaggi-msk-role",
+    "resource_id" : null
+  } ],
+  "conversion_metadata" : {
+    "source_cluster" : "jaggi-acl-demo",
+    "source_region" : "us-east-1",
+    "original_acl_count" : 4,
+    "converted_role_bindings_count" : 3,
+    "converted_at" : "2025-06-16T20:43:31.608878246",
+    "conversion_notes" : [ "Conversion from MSK ACLs to Confluent Cloud RBAC completed", "DENY permissions were skipped as Confluent Cloud uses ALLOW-based RBAC", "Group:* ACLs were skipped as wildcard group names are not supported in Confluent Cloud RBAC", "Service accounts need to be created in Confluent Cloud before applying role bindings", "Role assignments may need manual review for complex permission patterns", "Ensure target environment and cluster ID are correctly specified", "Some MSK-specific operations may not have direct Confluent Cloud equivalents" ]
+  },
+  "rbac_update_metadata" : null
+}
