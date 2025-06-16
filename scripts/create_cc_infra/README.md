@@ -42,7 +42,7 @@ Creates service accounts in Confluent Cloud based on principals extracted from M
 ```
 
 **Features:**
-- Reads principals from `generated_jsons/msk_principals.json`
+- Reads principals from `generated_jsons/msk_jsons/msk_principals.json`
 - Filters out system/internal principals
 - Creates service accounts using Confluent Cloud API
 - Skips existing service accounts

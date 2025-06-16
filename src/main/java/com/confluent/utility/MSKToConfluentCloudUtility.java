@@ -52,6 +52,11 @@ public class MSKToConfluentCloudUtility {
                     ConfluentCloudServiceAccountCreator.main(commandArgs);
                     break;
                     
+                case "update-service-account-id":
+                    System.out.println("🔧 Updating service account ID...");
+                    ServiceAccountIDUpdater.main(commandArgs);
+                    break;
+                    
                 case "help":
                 case "--help":
                 case "-h":
@@ -85,6 +90,7 @@ public class MSKToConfluentCloudUtility {
         System.out.println("  create-topics      Create topics in Confluent Cloud from MSK topics");
         System.out.println("  extract-principals Extract unique principals from MSK ACLs");
         System.out.println("  create-service-accounts Create service accounts in Confluent Cloud from principals");
+        System.out.println("  update-service-account-id Update service account ID in JSON files");
         System.out.println("  help               Show this help message");
         System.out.println();
         System.out.println("Examples:");
@@ -105,6 +111,12 @@ public class MSKToConfluentCloudUtility {
         System.out.println();
         System.out.println("  # Create service accounts in Confluent Cloud");
         System.out.println("  java -jar msk-to-confluent-cloud.jar create-service-accounts --config ccloud.config");
+        System.out.println();
+        System.out.println("  # Update service account ID manually");
+        System.out.println("  java -jar msk-to-confluent-cloud.jar update-service-account-id update jaggi-msk-role sa-abc123");
+        System.out.println();
+        System.out.println("  # List service accounts with unknown IDs");
+        System.out.println("  java -jar msk-to-confluent-cloud.jar update-service-account-id list");
         System.out.println();
         System.out.println("For detailed help on each command, use:");
         System.out.println("  java -jar msk-to-confluent-cloud.jar <command> --help");

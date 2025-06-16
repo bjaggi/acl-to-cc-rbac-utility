@@ -425,14 +425,14 @@ public class MSKACLExtractor {
             logger.info("Created output directory: generated_jsons");
         }
         
-        // Export ACLs to generated_jsons/msk_acls.json
-        exportACLsToJSON("generated_jsons/msk_acls.json", includeMetadata);
+        // Export ACLs to generated_jsons/msk_jsons/msk_acls.json
+        exportACLsToJSON("generated_jsons/msk_jsons/msk_acls.json", includeMetadata);
         
-        // Export Topics to generated_jsons/msk_topics.json
-        exportTopicsToJSON("generated_jsons/msk_topics.json", includeMetadata);
+        // Export Topics to generated_jsons/msk_jsons/msk_topics.json
+        exportTopicsToJSON("generated_jsons/msk_jsons/msk_topics.json", includeMetadata);
         
-        // Export Schemas to generated_jsons/msk_schemas.json
-        exportSchemasToJSON("generated_jsons/msk_schemas.json", includeMetadata);
+        // Export Schemas to generated_jsons/msk_jsons/msk_schemas.json
+        exportSchemasToJSON("generated_jsons/msk_jsons/msk_schemas.json", includeMetadata);
     }
     
     /**
@@ -589,9 +589,9 @@ public class MSKACLExtractor {
                 logger.info("Exporting ACLs, Topics, and Schemas...");
                 extractor.exportACLsAndTopicsToJSON(!noMetadata);
                 
-                System.out.println("✅ Successfully exported ACLs to generated_jsons/msk_acls.json");
-                System.out.println("✅ Successfully exported Topics to generated_jsons/msk_topics.json");
-                System.out.println("✅ Successfully exported Schemas to generated_jsons/msk_schemas.json");
+                System.out.println("✅ Successfully exported ACLs to generated_jsons/msk_jsons/msk_acls.json");
+                System.out.println("✅ Successfully exported Topics to generated_jsons/msk_jsons/msk_topics.json");
+                System.out.println("✅ Successfully exported Schemas to generated_jsons/msk_jsons/msk_schemas.json");
                 
             } finally {
                 extractor.close();

@@ -35,9 +35,9 @@ show_help() {
 MSK ACL and Topic Extractor
 
 This script reads MSK cluster configuration from msk.config file and extracts:
-- All ACLs (Access Control Lists) → generated_jsons/msk_acls.json
-- All topics with their configurations → generated_jsons/msk_topics.json
-- Unique principals from ACLs → generated_jsons/msk_principals.json
+- All ACLs (Access Control Lists) → generated_jsons/msk_jsons/msk_acls.json
+- All topics with their configurations → generated_jsons/msk_jsons/msk_topics.json
+- Unique principals from ACLs → generated_jsons/msk_jsons/msk_principals.json
 - Cluster metadata
 - Automatically converts ACLs to Confluent Cloud RBAC format → generated_jsons/cc_jsons/cc_rbac.json
 
@@ -63,9 +63,9 @@ Configuration:
         verbose            - Enable verbose logging (default: false)
 
 Output Files:
-    generated_jsons/msk_acls.json       - All ACLs from the MSK cluster
-    generated_jsons/msk_topics.json     - All topics with configurations
-    generated_jsons/msk_principals.json - Unique principals extracted from ACLs
+    generated_jsons/msk_jsons/msk_acls.json       - All ACLs from the MSK cluster
+    generated_jsons/msk_jsons/msk_topics.json     - All topics with configurations
+    generated_jsons/msk_jsons/msk_principals.json - Unique principals extracted from ACLs
     generated_jsons/cc_jsons/cc_rbac.json        - Confluent Cloud RBAC role bindings (auto-generated)
 
 Examples:
@@ -226,7 +226,7 @@ build_application() {
 
 # Convert ACLs to RBAC format
 convert_acls_to_rbac() {
-    if [[ -f "generated_jsons/msk_acls.json" ]]; then
+    if [[ -f "generated_jsons/msk_jsons/msk_acls.json" ]]; then
         print_info "🔄 Converting ACLs to Confluent Cloud RBAC format..."
         
         # Check if convert script exists
@@ -245,7 +245,7 @@ convert_acls_to_rbac() {
             print_info "Running: ./scripts/convert-acl-to-rbac.sh"
         fi
         
-        if ./scripts/convert-acl-to-rbac.sh; then
+        if ./scripts/convert-acl-to-rbac.sh -e env-7qv2p -c lkc-y316j; then
                     if [[ -f "generated_jsons/cc_jsons/cc_rbac.json" ]]; then
             RBAC_FILE_SIZE=$(wc -c < "generated_jsons/cc_jsons/cc_rbac.json")
             print_success "RBAC conversion completed: generated_jsons/cc_jsons/cc_rbac.json (${RBAC_FILE_SIZE} bytes)"
@@ -274,12 +274,12 @@ convert_acls_to_rbac() {
 
 # Extract principals from ACLs
 extract_principals_from_acls() {
-    if [[ -f "generated_jsons/msk_acls.json" ]]; then
+    if [[ -f "generated_jsons/msk_jsons/msk_acls.json" ]]; then
         print_info "Extracting unique principals from ACLs..."
         
         # Use the unified JAR with extract-principals command
         PRINCIPALS_CMD="java -jar target/msk-to-confluent-cloud.jar extract-principals"
-        PRINCIPALS_CMD="$PRINCIPALS_CMD generated_jsons/msk_acls.json generated_jsons/msk_principals.json"
+                        PRINCIPALS_CMD="$PRINCIPALS_CMD generated_jsons/msk_jsons/msk_acls.json generated_jsons/msk_jsons/msk_principals.json"
         
         if [[ "$VERBOSE" == "true" ]]; then
             PRINCIPALS_CMD="$PRINCIPALS_CMD -Dorg.slf4j.simpleLogger.defaultLogLevel=debug"
@@ -287,13 +287,13 @@ extract_principals_from_acls() {
         fi
         
         if eval $PRINCIPALS_CMD; then
-            if [[ -f "generated_jsons/msk_principals.json" ]]; then
-                PRINCIPALS_FILE_SIZE=$(wc -c < "generated_jsons/msk_principals.json")
-                print_success "Principals exported: generated_jsons/msk_principals.json (${PRINCIPALS_FILE_SIZE} bytes)"
+            if [[ -f "generated_jsons/msk_jsons/msk_principals.json" ]]; then
+                PRINCIPALS_FILE_SIZE=$(wc -c < "generated_jsons/msk_jsons/msk_principals.json")
+                print_success "Principals exported: generated_jsons/msk_jsons/msk_principals.json (${PRINCIPALS_FILE_SIZE} bytes)"
                 
                 # Show principal count if verbose and jq is available
                 if [[ "$VERBOSE" == "true" ]] && command -v jq &> /dev/null; then
-                    PRINCIPAL_COUNT=$(jq -r '.principal_count // 0' "generated_jsons/msk_principals.json" 2>/dev/null || echo "0")
+                    PRINCIPAL_COUNT=$(jq -r '.principal_count // 0' "generated_jsons/msk_jsons/msk_principals.json" 2>/dev/null || echo "0")
                     print_info "Principal count: $PRINCIPAL_COUNT"
                 fi
             fi
@@ -309,10 +309,10 @@ extract_principals_from_acls() {
 run_extraction() {
     print_info "Starting MSK ACL, Topic, and Schema extraction..."
     print_info "This will extract:"
-    print_info "  • All ACLs → generated_jsons/msk_acls.json"
-    print_info "  • All topics with configurations → generated_jsons/msk_topics.json"
-    print_info "  • All schemas from Glue Schema Registry → generated_jsons/msk_schemas.json"
-    print_info "  • Unique principals from ACLs → generated_jsons/msk_principals.json"
+    print_info "  • All ACLs → generated_jsons/msk_jsons/msk_acls.json"
+    print_info "  • All topics with configurations → generated_jsons/msk_jsons/msk_topics.json"
+    print_info "  • All schemas from Glue Schema Registry → generated_jsons/msk_jsons/msk_schemas.json"
+    print_info "  • Unique principals from ACLs → generated_jsons/msk_jsons/msk_principals.json"
     print_info "  • Cluster metadata (if enabled)"
     print_info "  • Auto-convert ACLs to RBAC → generated_jsons/cc_jsons/cc_rbac.json"
     
@@ -352,33 +352,33 @@ run_extraction() {
         print_success "Extraction completed successfully!"
         
         # Display output file info
-        if [[ -f "generated_jsons/msk_acls.json" ]]; then
-            ACL_FILE_SIZE=$(wc -c < "generated_jsons/msk_acls.json")
-            print_success "ACLs exported: generated_jsons/msk_acls.json (${ACL_FILE_SIZE} bytes)"
+        if [[ -f "generated_jsons/msk_jsons/msk_acls.json" ]]; then
+            ACL_FILE_SIZE=$(wc -c < "generated_jsons/msk_jsons/msk_acls.json")
+            print_success "ACLs exported: generated_jsons/msk_jsons/msk_acls.json (${ACL_FILE_SIZE} bytes)"
         fi
         
-        if [[ -f "generated_jsons/msk_topics.json" ]]; then
-            TOPIC_FILE_SIZE=$(wc -c < "generated_jsons/msk_topics.json")
-            print_success "Topics exported: generated_jsons/msk_topics.json (${TOPIC_FILE_SIZE} bytes)"
+        if [[ -f "generated_jsons/msk_jsons/msk_topics.json" ]]; then
+            TOPIC_FILE_SIZE=$(wc -c < "generated_jsons/msk_jsons/msk_topics.json")
+            print_success "Topics exported: generated_jsons/msk_jsons/msk_topics.json (${TOPIC_FILE_SIZE} bytes)"
         fi
         
-        if [[ -f "generated_jsons/msk_schemas.json" ]]; then
-            SCHEMA_FILE_SIZE=$(wc -c < "generated_jsons/msk_schemas.json")
-            print_success "Schemas exported: generated_jsons/msk_schemas.json (${SCHEMA_FILE_SIZE} bytes)"
+        if [[ -f "generated_jsons/msk_jsons/msk_schemas.json" ]]; then
+            SCHEMA_FILE_SIZE=$(wc -c < "generated_jsons/msk_jsons/msk_schemas.json")
+            print_success "Schemas exported: generated_jsons/msk_jsons/msk_schemas.json (${SCHEMA_FILE_SIZE} bytes)"
         fi
         
         # Show summary if verbose and jq is available
         if [[ "$VERBOSE" == "true" ]] && command -v jq &> /dev/null; then
-            if [[ -f "generated_jsons/msk_acls.json" ]]; then
-                ACL_COUNT=$(jq -r '.acl_count // 0' "generated_jsons/msk_acls.json" 2>/dev/null || echo "0")
+            if [[ -f "generated_jsons/msk_jsons/msk_acls.json" ]]; then
+                ACL_COUNT=$(jq -r '.acl_count // 0' "generated_jsons/msk_jsons/msk_acls.json" 2>/dev/null || echo "0")
                 print_info "ACL count: $ACL_COUNT"
             fi
-            if [[ -f "generated_jsons/msk_topics.json" ]]; then
-                TOPIC_COUNT=$(jq -r '.topic_count // 0' "generated_jsons/msk_topics.json" 2>/dev/null || echo "0")
+            if [[ -f "generated_jsons/msk_jsons/msk_topics.json" ]]; then
+                TOPIC_COUNT=$(jq -r '.topic_count // 0' "generated_jsons/msk_jsons/msk_topics.json" 2>/dev/null || echo "0")
                 print_info "Topic count: $TOPIC_COUNT"
             fi
-            if [[ -f "generated_jsons/msk_schemas.json" ]]; then
-                SCHEMA_COUNT=$(jq -r '.schema_count // 0' "generated_jsons/msk_schemas.json" 2>/dev/null || echo "0")
+            if [[ -f "generated_jsons/msk_jsons/msk_schemas.json" ]]; then
+                SCHEMA_COUNT=$(jq -r '.schema_count // 0' "generated_jsons/msk_jsons/msk_schemas.json" 2>/dev/null || echo "0")
                 print_info "Schema count: $SCHEMA_COUNT"
             fi
         fi
@@ -392,10 +392,10 @@ run_extraction() {
         print_success "✅ MSK data extraction and conversion completed!"
         print_info ""
         print_info "Generated files:"
-        print_info "  📄 generated_jsons/msk_acls.json       - ACLs and cluster metadata"
-        print_info "  📄 generated_jsons/msk_topics.json     - Topics and configurations"
-        print_info "  📄 generated_jsons/msk_schemas.json    - Schemas from Glue Schema Registry"
-        print_info "  📄 generated_jsons/msk_principals.json - Unique principals from ACLs"
+        print_info "  📄 generated_jsons/msk_jsons/msk_acls.json       - ACLs and cluster metadata"
+        print_info "  📄 generated_jsons/msk_jsons/msk_topics.json     - Topics and configurations"
+        print_info "  📄 generated_jsons/msk_jsons/msk_schemas.json    - Schemas from Glue Schema Registry"
+        print_info "  📄 generated_jsons/msk_jsons/msk_principals.json - Unique principals from ACLs"
         if [[ -f "generated_jsons/cc_jsons/cc_rbac.json" ]]; then
             print_info "  📄 generated_jsons/cc_jsons/cc_rbac.json        - Confluent Cloud RBAC role bindings"
         fi

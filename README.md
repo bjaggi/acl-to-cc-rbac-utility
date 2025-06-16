@@ -152,7 +152,7 @@ This script:
 ./scripts/convert-acl-to-rbac.sh [OPTIONS]
 
 Options:
-  -i, --input FILE        Input MSK ACLs JSON file (default: generated_jsons/msk_acls.json)
+  -i, --input FILE        Input MSK ACLs JSON file (default: generated_jsons/msk_jsons/msk_acls.json)
   -o, --output FILE       Output CC RBAC JSON file (default: generated_jsons/cc_jsons/cc_rbac.json)
   -e, --environment ENV   Target Confluent Cloud environment ID (required)
   -c, --cluster CLUSTER   Target Confluent Cloud cluster ID (required)
@@ -370,7 +370,7 @@ confluent_cloud_secret=YOUR_CLOUD_API_SECRET
 
 ## 📊 Output Formats
 
-### MSK ACLs Output (generated_jsons/msk_acls.json)
+### MSK ACLs Output (generated_jsons/msk_jsons/msk_acls.json)
 ```json
 {
   "acls": [

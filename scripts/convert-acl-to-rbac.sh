@@ -6,7 +6,7 @@
 set -e
 
 # Default values
-INPUT_FILE="generated_jsons/msk_acls.json"
+INPUT_FILE="generated_jsons/msk_jsons/msk_acls.json"
 OUTPUT_FILE="generated_jsons/cc_jsons/cc_rbac.json"
 ENVIRONMENT="env-xxxxx"
 CLUSTER_ID="lkc-xxxxx"
@@ -20,7 +20,7 @@ MSK ACL to Confluent Cloud RBAC Converter
 Usage: $0 [OPTIONS]
 
 Options:
-    -i, --input FILE        Input MSK ACLs JSON file (default: generated_jsons/msk_acls.json)
+    -i, --input FILE        Input MSK ACLs JSON file (default: generated_jsons/msk_jsons/msk_acls.json)
     -o, --output FILE       Output Confluent Cloud RBAC JSON file (default: generated_jsons/cc_jsons/cc_rbac.json)
     -e, --environment ENV   Target Confluent Cloud environment ID (e.g., env-12345)
     -c, --cluster CLUSTER   Target Confluent Cloud cluster ID (e.g., lkc-67890)
@@ -158,9 +158,9 @@ build_application() {
     fi
 }
 
-# Validate input file (always generated_jsons/msk_acls.json)
+# Validate input file (always generated_jsons/msk_jsons/msk_acls.json)
 validate_input() {
-    REQUIRED_INPUT_FILE="generated_jsons/msk_acls.json"
+    REQUIRED_INPUT_FILE="generated_jsons/msk_jsons/msk_acls.json"
     
     if [[ ! -f "$REQUIRED_INPUT_FILE" ]]; then
         print_error "Required input file does not exist: $REQUIRED_INPUT_FILE"
@@ -181,7 +181,7 @@ validate_input() {
 # Run the conversion
 run_conversion() {
     print_info "Starting ACL to RBAC conversion..."
-    print_info "Input file: generated_jsons/msk_acls.json (hardcoded)"
+    print_info "Input file: generated_jsons/msk_jsons/msk_acls.json (hardcoded)"
     print_info "Output file: $OUTPUT_FILE"
     print_info "Target environment: $ENVIRONMENT"
     print_info "Target cluster: $CLUSTER_ID"

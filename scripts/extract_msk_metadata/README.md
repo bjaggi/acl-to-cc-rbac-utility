@@ -7,9 +7,9 @@ This folder contains scripts for extracting metadata from Amazon MSK clusters.
 ### `extract-msk-metadata.sh`
 Comprehensive script that extracts all metadata from an MSK cluster and automatically converts ACLs to RBAC:
 
-- **ACLs** → `generated_jsons/msk_acls.json`
+- **ACLs** → `generated_jsons/msk_jsons/msk_acls.json`
 - **Topics** → `generated_jsons/msk_topics.json` 
-- **Principals** → `generated_jsons/msk_principals.json`
+- **Principals** → `generated_jsons/msk_jsons/msk_principals.json`
 - **Schemas** → `generated_jsons/msk_schemas.json`
 - **Cluster metadata**
 - **Auto-converts ACLs to RBAC** → `generated_jsons/cc_jsons/cc_rbac.json`

@@ -6,7 +6,7 @@
 set -e
 
 # Default values
-TOPICS_FILE="generated_jsons/msk_topics.json"
+TOPICS_FILE="generated_jsons/msk_jsons/msk_topics.json"
 DRY_RUN=false
 VERBOSE=false
 
@@ -25,7 +25,7 @@ Create Topics in Confluent Cloud
 Usage: $0 [OPTIONS]
 
 Options:
-    -f, --file FILE         MSK topics JSON file (default: generated_jsons/msk_topics.json)
+    -f, --file FILE         MSK topics JSON file (default: generated_jsons/msk_jsons/msk_topics.json)
     -d, --dry-run           Show what topics would be created without creating them
     -v, --verbose           Enable verbose output
     -h, --help              Show this help message

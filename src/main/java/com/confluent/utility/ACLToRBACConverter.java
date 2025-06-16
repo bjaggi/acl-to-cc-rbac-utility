@@ -403,24 +403,40 @@ public class ACLToRBACConverter {
         // Check for help flag
         if (args.length > 0 && (args[0].equals("-h") || args[0].equals("--help"))) {
             System.out.println("MSK ACL to Confluent Cloud RBAC Converter");
-            System.out.println("Usage: java ACLToRBACConverter [output_file] [environment] [cluster_id]");
+            System.out.println("Usage: java ACLToRBACConverter [output_file] [environment] [cluster_id] [options]");
             System.out.println("  output_file - Output file for Confluent Cloud RBAC (default: generated_jsons/cc_jsons/cc_rbac.json)");
             System.out.println("  environment - Target Confluent Cloud environment (default: env-xxxxx)");
             System.out.println("  cluster_id  - Target Confluent Cloud cluster ID (default: lkc-xxxxx)");
             System.out.println("");
-            System.out.println("Note: Input file is always read from generated_jsons/msk_acls.json");
+            System.out.println("Options:");
+            System.out.println("  --verbose   - Enable verbose logging");
+            System.out.println("  --help, -h  - Show this help message");
+            System.out.println("");
+            System.out.println("Note: Input file is always read from generated_jsons/msk_jsons/msk_acls.json");
             System.out.println("");
             System.out.println("Examples:");
             System.out.println("  java ACLToRBACConverter");
             System.out.println("  java ACLToRBACConverter my_rbac.json env-abc123 lkc-xyz789");
+            System.out.println("  java ACLToRBACConverter --verbose");
             System.exit(0);
         }
         
-        // Always read from generated_jsons/msk_acls.json
-        String inputFile = "generated_jsons/msk_acls.json";
-        String outputFile = args.length > 0 ? args[0] : "generated_jsons/cc_jsons/cc_rbac.json";
-        String environment = args.length > 1 ? args[1] : "env-xxxxx";
-        String clusterId = args.length > 2 ? args[2] : "lkc-xxxxx";
+        // Parse flags first
+        boolean verbose = Arrays.asList(args).contains("--verbose");
+        
+        // Parse positional arguments (skip flags)
+        List<String> positionalArgs = new ArrayList<>();
+        for (String arg : args) {
+            if (!arg.startsWith("--")) {
+                positionalArgs.add(arg);
+            }
+        }
+        
+        // Always read from generated_jsons/msk_jsons/msk_acls.json
+        String inputFile = "generated_jsons/msk_jsons/msk_acls.json";
+        String outputFile = positionalArgs.size() > 0 ? positionalArgs.get(0) : "generated_jsons/cc_jsons/cc_rbac.json";
+        String environment = positionalArgs.size() > 1 ? positionalArgs.get(1) : "env-xxxxx";
+        String clusterId = positionalArgs.size() > 2 ? positionalArgs.get(2) : "lkc-xxxxx";
         
         ACLToRBACConverter converter = new ACLToRBACConverter();
         

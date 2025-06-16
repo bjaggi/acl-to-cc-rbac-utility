@@ -94,6 +94,4 @@ echo "🔧 Making all shell scripts executable..."
 find scripts -name "*.sh" -type f -exec chmod +x {} \;
 
 echo ""
-echo "✅ All shell scripts in the scripts folder are now executable:"
-
-done 
+echo "✅ All shell scripts in the scripts folder are now executable"

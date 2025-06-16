@@ -115,7 +115,7 @@ public class ConfluentCloudServiceAccountCreator {
         }
         
         try {
-            // Check if service account already exists
+            // First, always check if service account already exists using comprehensive search
             ServiceAccountDetails existingAccount = findExistingServiceAccount(serviceAccountName);
             if (existingAccount != null) {
                 logger.info("{} Service account '{}' already exists with ID: {}", EXISTS, serviceAccountName, existingAccount.id);
@@ -123,7 +123,7 @@ public class ConfluentCloudServiceAccountCreator {
                                               principal.principal, principal.acl_count, principal.permissions, existingAccount);
             }
             
-            // Create new service account
+            // If not found, try to create new service account
             ServiceAccountDetails newAccount = createNewServiceAccount(serviceAccountName, description);
             logger.info("{} Created service account '{}' with ID: {}", SUCCESS, serviceAccountName, newAccount.id);
             return new ServiceAccountResult(serviceAccountName, newAccount.id, true, "Created successfully", 
@@ -132,53 +132,35 @@ public class ConfluentCloudServiceAccountCreator {
         } catch (Exception e) {
             String errorMessage = e.getMessage();
             
-            // If creation failed with 409 (already exists), try to find the existing service account
+            // If creation failed with 409 (already exists), do a more thorough search
             if (errorMessage != null && (errorMessage.contains("409") || errorMessage.toLowerCase().contains("already in use"))) {
-                logger.warn("{} Service account '{}' creation failed (already exists), attempting to find existing account...", 
+                logger.warn("{} Service account '{}' creation failed with 409 error, performing exhaustive search...", 
                            WARNING, serviceAccountName);
                 
                 try {
-                    // Try a broader search to help with debugging
-                    ServiceAccountDetails foundAccount = listAllServiceAccountsForDebugging(serviceAccountName);
+                    // Force a comprehensive search with all strategies
+                    ServiceAccountDetails foundAccount = performExhaustiveSearch(serviceAccountName);
                     
                     if (foundAccount != null) {
-                        logger.info("{} Found service account using broader search: '{}' with ID: {}", 
+                        logger.info("{} Found service account via exhaustive search: '{}' with ID: {}", 
                                    SUCCESS, foundAccount.display_name, foundAccount.id);
                         return new ServiceAccountResult(serviceAccountName, foundAccount.id, true, 
-                                                      "Already exists (found via broader search)", 
+                                                      "Already exists (found via exhaustive search after 409)", 
                                                       principal.principal, principal.acl_count, principal.permissions, foundAccount);
                     } else {
-                        // Service account exists but we can't find it - still mark as existing
-                        logger.warn("{} Service account '{}' exists (409 error) but could not be located. This may be due to permissions or API limitations.", 
-                                   WARNING, serviceAccountName);
-                        logger.info("{} Attempting direct lookup by name...", PROCESSING);
+                        // This should be extremely rare now with comprehensive search
+                        logger.error("{} Service account '{}' confirmed to exist (409 error) but could not be found via any API method!", 
+                                   ERROR, serviceAccountName);
+                        logger.error("{} This may indicate API permissions issues or service account in different environment", ERROR);
                         
-                        // Try direct lookup by name (different API approach)
-                        ServiceAccountDetails directLookup = findServiceAccountByNameDirect(serviceAccountName);
-                        if (directLookup != null) {
-                            logger.info("{} Found service account via direct lookup: '{}' with ID: {}", 
-                                       SUCCESS, directLookup.display_name, directLookup.id);
-                            return new ServiceAccountResult(serviceAccountName, directLookup.id, true, 
-                                                          "Already exists (found via direct lookup)", 
-                                                          principal.principal, principal.acl_count, principal.permissions, directLookup);
-                        } else {
-                            // Still can't find it, but we know it exists - create entry without ID
-                            logger.warn("{} Service account '{}' confirmed to exist (409 error) but ID could not be retrieved.", 
-                                       WARNING, serviceAccountName);
-                            logger.info("{} Creating service account entry with status 'existing' but no ID", INFO);
-                            
-                            return new ServiceAccountResult(serviceAccountName, "EXISTING_BUT_ID_UNKNOWN", true, 
-                                                          "Already exists (confirmed by 409 error, but ID not retrievable)", 
-                                                          principal.principal, principal.acl_count, principal.permissions);
-                        }
+                        return new ServiceAccountResult(serviceAccountName, "SEARCH_FAILED_AFTER_409", false, 
+                                                      "Already exists (409 confirmed) but exhaustive API search failed - check permissions and environment", 
+                                                      principal.principal, principal.acl_count, principal.permissions);
                     }
-                } catch (Exception findException) {
-                    logger.error("{} Failed to find existing service account '{}': {}", ERROR, serviceAccountName, findException.getMessage());
-                    
-                    // Even if lookup failed, we know the service account exists due to 409 error
-                    logger.info("{} Creating service account entry based on 409 error confirmation", INFO);
-                    return new ServiceAccountResult(serviceAccountName, "EXISTING_BUT_LOOKUP_FAILED", true, 
-                                                  "Already exists (confirmed by 409 error, but lookup failed: " + findException.getMessage() + ")", 
+                } catch (Exception searchException) {
+                    logger.error("{} Exhaustive search failed after 409 error: {}", ERROR, searchException.getMessage());
+                    return new ServiceAccountResult(serviceAccountName, "SEARCH_ERROR_AFTER_409", false, 
+                                                  "Already exists (409 confirmed) but search failed: " + searchException.getMessage(), 
                                                   principal.principal, principal.acl_count, principal.permissions);
                 }
             } else {
@@ -191,6 +173,189 @@ public class ConfluentCloudServiceAccountCreator {
                                               principal.principal, principal.acl_count, principal.permissions);
             }
         }
+    }
+    
+    /**
+     * Find existing service account by name using comprehensive API search
+     */
+    private ServiceAccountDetails findExistingServiceAccount(String name) throws IOException {
+        logger.debug("{} Searching for existing service account: '{}'", DEBUG, name);
+        
+        // Try multiple search strategies to ensure we find the service account
+        ServiceAccountDetails result = null;
+        
+        // Strategy 1: Standard API call
+        result = searchServiceAccountsStandard(name);
+        if (result != null) {
+            logger.info("{} Found service account via standard search: '{}' (ID: {})", SUCCESS, result.display_name, result.id);
+            return result;
+        }
+        
+        // Strategy 2: Paginated search with different page sizes
+        int[] pageSizes = {10, 25, 50, 100, 200};
+        for (int pageSize : pageSizes) {
+            result = searchServiceAccountsPaginated(name, pageSize);
+            if (result != null) {
+                logger.info("{} Found service account via paginated search (page_size={}): '{}' (ID: {})", 
+                           SUCCESS, pageSize, result.display_name, result.id);
+                return result;
+            }
+        }
+        
+        // Strategy 3: Case-insensitive search
+        result = searchServiceAccountsCaseInsensitive(name);
+        if (result != null) {
+            logger.info("{} Found service account via case-insensitive search: '{}' (ID: {})", 
+                       SUCCESS, result.display_name, result.id);
+            return result;
+        }
+        
+        logger.debug("{} Service account '{}' not found via API search", DEBUG, name);
+        return null;
+    }
+    
+    /**
+     * Standard service account search using display_name parameter
+     */
+    private ServiceAccountDetails searchServiceAccountsStandard(String name) throws IOException {
+        // Use the display_name parameter for direct filtering
+        String url = baseUrl + "/iam/v2/service-accounts?display_name=" + java.net.URLEncoder.encode(name, "UTF-8");
+        
+        Request request = new Request.Builder()
+                .url(url)
+                .header("Authorization", Credentials.basic(apiKey, apiSecret))
+                .header("Content-Type", "application/json")
+                .get()
+                .build();
+        
+        if (verbose) {
+            logger.debug("GET {} (using display_name parameter)", url);
+        }
+        
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                logger.warn("{} Standard search failed: {} {}", WARNING, response.code(), response.message());
+                return null;
+            }
+            
+            String responseBody = response.body().string();
+            if (verbose) {
+                logger.debug("Standard search response: {}", responseBody);
+            }
+            
+            return parseServiceAccountResponse(responseBody, name, true); // exact match
+        }
+    }
+    
+    /**
+     * Paginated service account search using display_name parameter
+     */
+    private ServiceAccountDetails searchServiceAccountsPaginated(String name, int pageSize) {
+        try {
+            // Use display_name parameter with page_size for direct filtering
+            String url = baseUrl + "/iam/v2/service-accounts?display_name=" + java.net.URLEncoder.encode(name, "UTF-8") + "&page_size=" + pageSize;
+            
+            Request request = new Request.Builder()
+                    .url(url)
+                    .header("Authorization", Credentials.basic(apiKey, apiSecret))
+                    .header("Content-Type", "application/json")
+                    .get()
+                    .build();
+            
+            if (verbose) {
+                logger.debug("GET {} (paginated with display_name, page_size={})", url, pageSize);
+            }
+            
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    logger.debug("{} Paginated search failed (page_size={}): {}", DEBUG, pageSize, response.code());
+                    return null;
+                }
+                
+                String responseBody = response.body().string();
+                if (verbose) {
+                    logger.debug("Paginated search response (page_size={}): {}", pageSize, responseBody);
+                }
+                
+                return parseServiceAccountResponse(responseBody, name, true); // exact match
+            }
+        } catch (Exception e) {
+            logger.debug("{} Paginated search error (page_size={}): {}", DEBUG, pageSize, e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Case-insensitive service account search
+     */
+    private ServiceAccountDetails searchServiceAccountsCaseInsensitive(String name) {
+        try {
+            String url = baseUrl + "/iam/v2/service-accounts?page_size=100";
+            
+            Request request = new Request.Builder()
+                    .url(url)
+                    .header("Authorization", Credentials.basic(apiKey, apiSecret))
+                    .header("Content-Type", "application/json")
+                    .get()
+                    .build();
+            
+            if (verbose) {
+                logger.debug("GET {} (case-insensitive search)", url);
+            }
+            
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    logger.debug("{} Case-insensitive search failed: {}", DEBUG, response.code());
+                    return null;
+                }
+                
+                String responseBody = response.body().string();
+                if (verbose) {
+                    logger.debug("Case-insensitive search response: {}", responseBody);
+                }
+                
+                return parseServiceAccountResponse(responseBody, name, false); // case-insensitive match
+            }
+        } catch (Exception e) {
+            logger.debug("{} Case-insensitive search error: {}", DEBUG, e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Parse service account response and find matching account
+     */
+    private ServiceAccountDetails parseServiceAccountResponse(String responseBody, String targetName, boolean exactMatch) throws IOException {
+        Map<String, Object> responseMap = objectMapper.readValue(responseBody, Map.class);
+        List<Map<String, Object>> serviceAccounts = (List<Map<String, Object>>) responseMap.get("data");
+        
+        if (serviceAccounts != null && !serviceAccounts.isEmpty()) {
+            logger.debug("{} Parsing {} service accounts from API response", DEBUG, serviceAccounts.size());
+            
+            for (Map<String, Object> sa : serviceAccounts) {
+                String displayName = (String) sa.get("display_name");
+                String id = (String) sa.get("id");
+                
+                if (displayName != null) {
+                    boolean matches = exactMatch ? 
+                        targetName.equals(displayName) : 
+                        targetName.equalsIgnoreCase(displayName);
+                    
+                    if (matches) {
+                        logger.debug("{} Found matching service account: '{}' (ID: {})", SUCCESS, displayName, id);
+                        return new ServiceAccountDetails(
+                            id,
+                            displayName,
+                            (String) sa.get("description"),
+                            (String) sa.get("created_at"),
+                            (String) sa.get("updated_at")
+                        );
+                    }
+                }
+            }
+        }
+        
+        return null;
     }
     
     /**
@@ -267,64 +432,14 @@ public class ConfluentCloudServiceAccountCreator {
     }
     
     /**
-     * Find existing service account by name
-     */
-    private ServiceAccountDetails findExistingServiceAccount(String name) throws IOException {
-        String url = baseUrl + "/iam/v2/service-accounts";
-        
-        Request request = new Request.Builder()
-                .url(url)
-                .header("Authorization", Credentials.basic(apiKey, apiSecret))
-                .header("Content-Type", "application/json")
-                .get()
-                .build();
-        
-        if (verbose) {
-            logger.debug("GET {}", url);
-        }
-        
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Failed to list service accounts: " + response.code() + " " + response.message());
-            }
-            
-            String responseBody = response.body().string();
-            if (verbose) {
-                logger.debug("Response: {}", responseBody);
-            }
-            
-            // Parse response to find matching service account
-            Map<String, Object> responseMap = objectMapper.readValue(responseBody, Map.class);
-            List<Map<String, Object>> serviceAccounts = (List<Map<String, Object>>) responseMap.get("data");
-            
-            if (serviceAccounts != null) {
-                for (Map<String, Object> sa : serviceAccounts) {
-                    String displayName = (String) sa.get("display_name");
-                    if (name.equals(displayName)) {
-                        return new ServiceAccountDetails(
-                            (String) sa.get("id"),
-                            displayName,
-                            (String) sa.get("description"),
-                            (String) sa.get("created_at"),
-                            (String) sa.get("updated_at")
-                        );
-                    }
-                }
-            }
-            
-            return null; // Not found
-        }
-    }
-    
-    /**
      * Try to find service account by name using direct search with pagination
      */
     private ServiceAccountDetails findServiceAccountByNameDirect(String name) {
         try {
-            logger.info("{} Attempting direct service account lookup with pagination for: '{}'", DEBUG, name);
+            logger.info("{} Attempting direct service account lookup using display_name parameter for: '{}'", DEBUG, name);
             
-            // Try with pagination to get more results
-            String url = baseUrl + "/iam/v2/service-accounts?page_size=100";
+            // Use display_name parameter for direct filtering
+            String url = baseUrl + "/iam/v2/service-accounts?display_name=" + java.net.URLEncoder.encode(name, "UTF-8");
             
             Request request = new Request.Builder()
                     .url(url)
@@ -334,7 +449,7 @@ public class ConfluentCloudServiceAccountCreator {
                     .build();
             
             if (verbose) {
-                logger.debug("GET {} (with pagination)", url);
+                logger.debug("GET {} (using display_name parameter)", url);
             }
             
             try (Response response = httpClient.newCall(request).execute()) {
@@ -384,6 +499,150 @@ public class ConfluentCloudServiceAccountCreator {
             if (verbose) {
                 logger.debug("Direct lookup error:", e);
             }
+            return null;
+        }
+    }
+    
+    /**
+     * Enhanced search for existing service account using multiple strategies
+     */
+    private ServiceAccountDetails findServiceAccountEnhanced(String name) {
+        logger.info("{} Enhanced search for service account: '{}'", DEBUG, name);
+        
+        // Strategy 1: Try different page sizes
+        int[] pageSizes = {10, 50, 100, 200};
+        for (int pageSize : pageSizes) {
+            ServiceAccountDetails result = searchWithPageSize(name, pageSize);
+            if (result != null) {
+                logger.info("{} Found service account using page size {}: '{}' (ID: {})", 
+                           SUCCESS, pageSize, result.display_name, result.id);
+                return result;
+            }
+        }
+        
+        // Strategy 2: Try with different API endpoints or parameters
+        ServiceAccountDetails result = searchWithAlternativeMethod(name);
+        if (result != null) {
+            logger.info("{} Found service account using alternative method: '{}' (ID: {})", 
+                       SUCCESS, result.display_name, result.id);
+            return result;
+        }
+        
+        logger.warn("{} Enhanced search completed but service account '{}' not found via API", WARNING, name);
+        return null;
+    }
+    
+    /**
+     * Search with specific page size using display_name parameter
+     */
+    private ServiceAccountDetails searchWithPageSize(String name, int pageSize) {
+        try {
+            // Use display_name parameter with page_size for direct filtering
+            String url = baseUrl + "/iam/v2/service-accounts?display_name=" + java.net.URLEncoder.encode(name, "UTF-8") + "&page_size=" + pageSize;
+            
+            Request request = new Request.Builder()
+                    .url(url)
+                    .header("Authorization", Credentials.basic(apiKey, apiSecret))
+                    .header("Content-Type", "application/json")
+                    .get()
+                    .build();
+            
+            if (verbose) {
+                logger.debug("GET {} (display_name with page_size={})", url, pageSize);
+            }
+            
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    logger.debug("{} Search with page size {} failed: {}", DEBUG, pageSize, response.code());
+                    return null;
+                }
+                
+                String responseBody = response.body().string();
+                Map<String, Object> responseMap = objectMapper.readValue(responseBody, Map.class);
+                List<Map<String, Object>> serviceAccounts = (List<Map<String, Object>>) responseMap.get("data");
+                
+                if (serviceAccounts != null) {
+                    logger.debug("{} Page size {} returned {} service accounts", DEBUG, pageSize, serviceAccounts.size());
+                    
+                    for (Map<String, Object> sa : serviceAccounts) {
+                        String displayName = (String) sa.get("display_name");
+                        String id = (String) sa.get("id");
+                        
+                        // Try exact match (case sensitive)
+                        if (name.equals(displayName)) {
+                            return new ServiceAccountDetails(
+                                id, displayName, (String) sa.get("description"),
+                                (String) sa.get("created_at"), (String) sa.get("updated_at")
+                            );
+                        }
+                        
+                        // Try case insensitive match
+                        if (name.equalsIgnoreCase(displayName)) {
+                            logger.info("{} Found case-insensitive match: '{}' vs '{}'", DEBUG, name, displayName);
+                            return new ServiceAccountDetails(
+                                id, displayName, (String) sa.get("description"),
+                                (String) sa.get("created_at"), (String) sa.get("updated_at")
+                            );
+                        }
+                    }
+                }
+                
+                return null;
+            }
+        } catch (Exception e) {
+            logger.debug("{} Search with page size {} failed: {}", DEBUG, pageSize, e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Alternative search method using display_name parameter
+     */
+    private ServiceAccountDetails searchWithAlternativeMethod(String name) {
+        try {
+            // Use display_name parameter without pagination
+            String url = baseUrl + "/iam/v2/service-accounts?display_name=" + java.net.URLEncoder.encode(name, "UTF-8");
+            
+            Request request = new Request.Builder()
+                    .url(url)
+                    .header("Authorization", Credentials.basic(apiKey, apiSecret))
+                    .header("Content-Type", "application/json")
+                    .get()
+                    .build();
+            
+            if (verbose) {
+                logger.debug("GET {} (display_name without pagination)", url);
+            }
+            
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    return null;
+                }
+                
+                String responseBody = response.body().string();
+                Map<String, Object> responseMap = objectMapper.readValue(responseBody, Map.class);
+                List<Map<String, Object>> serviceAccounts = (List<Map<String, Object>>) responseMap.get("data");
+                
+                if (serviceAccounts != null) {
+                    logger.debug("{} Alternative method returned {} service accounts", DEBUG, serviceAccounts.size());
+                    
+                    for (Map<String, Object> sa : serviceAccounts) {
+                        String displayName = (String) sa.get("display_name");
+                        String id = (String) sa.get("id");
+                        
+                        if (name.equals(displayName) || name.equalsIgnoreCase(displayName)) {
+                            return new ServiceAccountDetails(
+                                id, displayName, (String) sa.get("description"),
+                                (String) sa.get("created_at"), (String) sa.get("updated_at")
+                            );
+                        }
+                    }
+                }
+                
+                return null;
+            }
+        } catch (Exception e) {
+            logger.debug("{} Alternative search method failed: {}", DEBUG, e.getMessage());
             return null;
         }
     }
@@ -681,7 +940,7 @@ public class ConfluentCloudServiceAccountCreator {
             }
         }
         
-        String principalsFile = positionalArgs.size() > 0 ? positionalArgs.get(0) : "generated_jsons/msk_principals.json";
+        String principalsFile = positionalArgs.size() > 0 ? positionalArgs.get(0) : "generated_jsons/msk_jsons/msk_principals.json";
         String configFile = positionalArgs.size() > 1 ? positionalArgs.get(1) : "ccloud.config";
         
         try {
@@ -709,7 +968,7 @@ public class ConfluentCloudServiceAccountCreator {
         System.out.println("Usage: java ConfluentCloudServiceAccountCreator [principals_file] [config_file] [options]");
         System.out.println();
         System.out.println("Arguments:");
-        System.out.println("  principals_file  MSK principals JSON file (default: generated_jsons/msk_principals.json)");
+        System.out.println("  principals_file  MSK principals JSON file (default: generated_jsons/msk_jsons/msk_principals.json)");
         System.out.println("  config_file      Confluent Cloud config file (default: ccloud.config)");
         System.out.println();
         System.out.println("Options:");
@@ -729,5 +988,39 @@ public class ConfluentCloudServiceAccountCreator {
         System.out.println("4. Skip existing service accounts");
         System.out.println("5. Create cc_service_accounts.json with all details");
         System.out.println("6. Report creation results with visual status icons");
+    }
+    
+    /**
+     * Perform exhaustive search using all available methods
+     */
+    private ServiceAccountDetails performExhaustiveSearch(String serviceAccountName) {
+        logger.info("{} Performing exhaustive search for service account: '{}'", PROCESSING, serviceAccountName);
+        
+        try {
+            // Try the enhanced search first
+            ServiceAccountDetails result = findServiceAccountEnhanced(serviceAccountName);
+            if (result != null) {
+                return result;
+            }
+            
+            // Try the debugging search (lists all accounts)
+            result = listAllServiceAccountsForDebugging(serviceAccountName);
+            if (result != null) {
+                return result;
+            }
+            
+            // Try direct lookup
+            result = findServiceAccountByNameDirect(serviceAccountName);
+            if (result != null) {
+                return result;
+            }
+            
+            logger.warn("{} Exhaustive search completed but service account '{}' not found", WARNING, serviceAccountName);
+            return null;
+            
+        } catch (Exception e) {
+            logger.error("{} Exhaustive search failed: {}", ERROR, e.getMessage());
+            return null;
+        }
     }
 }

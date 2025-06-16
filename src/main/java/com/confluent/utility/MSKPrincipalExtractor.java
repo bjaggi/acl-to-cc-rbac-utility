@@ -246,8 +246,8 @@ public class MSKPrincipalExtractor {
             System.exit(0);
         }
         
-        String aclsFile = args.length > 0 ? args[0] : "generated_jsons/msk_acls.json";
-        String principalsFile = args.length > 1 ? args[1] : "generated_jsons/msk_principals.json";
+        String aclsFile = args.length > 0 ? args[0] : "generated_jsons/msk_jsons/msk_acls.json";
+        String principalsFile = args.length > 1 ? args[1] : "generated_jsons/msk_jsons/msk_principals.json";
         
         try {
             MSKPrincipalExtractor extractor = new MSKPrincipalExtractor();
@@ -268,8 +268,8 @@ public class MSKPrincipalExtractor {
         System.out.println("Usage: java MSKPrincipalExtractor [acls_file] [principals_file]");
         System.out.println();
         System.out.println("Arguments:");
-        System.out.println("  acls_file       MSK ACLs JSON file (default: generated_jsons/msk_acls.json)");
-        System.out.println("  principals_file Output principals JSON file (default: generated_jsons/msk_principals.json)");
+        System.out.println("  acls_file       MSK ACLs JSON file (default: generated_jsons/msk_jsons/msk_acls.json)");
+        System.out.println("  principals_file Output principals JSON file (default: generated_jsons/msk_jsons/msk_principals.json)");
         System.out.println();
         System.out.println("Examples:");
         System.out.println("  java MSKPrincipalExtractor");
