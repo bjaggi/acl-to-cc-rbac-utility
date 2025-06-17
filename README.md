@@ -6,6 +6,7 @@ A comprehensive Java-based utility that extracts metadata from Amazon MSK (Manag
 
 - ✅ **Complete MSK Metadata Extraction**: ACLs, Topics, and Schemas (all versions)
 - ✅ **Automated Schema Registry Integration**: AWS Glue Schema Registry support
+- ✅ **Schema Migration**: Migrate schemas from AWS Glue to Confluent Cloud Schema Registry
 - ✅ **Confluent Cloud RBAC Conversion**: Convert MSK ACLs to CC role bindings
 - ✅ **Automated RBAC Application**: Automatically apply roles to Confluent Cloud
 - ✅ **Service Account Management**: Auto-create and manage service accounts
@@ -69,6 +70,10 @@ sasl.mechanisms=PLAIN
 # Cloud API Keys (for RBAC operations)
 confluent_cloud_key=YOUR_CLOUD_API_KEY
 confluent_cloud_secret=YOUR_CLOUD_API_SECRET
+
+# Schema Registry (for schema migration)
+schema.registry.url=https://psrc-xxxxx.region.gcp.confluent.cloud
+schema.registry.basic.auth.user.info=SR_API_KEY:SR_API_SECRET
 ```
 
 **⚠️ Important**: You need **both** Kafka API keys AND Cloud API keys with proper permissions. See [API_KEYS_AND_PERMISSIONS.md](API_KEYS_AND_PERMISSIONS.md) for details.
@@ -81,11 +86,17 @@ confluent_cloud_secret=YOUR_CLOUD_API_SECRET
 # Step 2: Create topics in Confluent Cloud
 ./scripts/create_cc_infra/create-cc-topics.sh
 
-# Step 3: Create RBAC role bindings in Confluent Cloud
+# Step 3: Migrate schemas to Confluent Cloud Schema Registry
+./scripts/create_cc_infra/create-cc-schemas.sh
+
+# Step 4: Create service account credentials  
+./scripts/create_cc_infra/create-cc-sa-creds.sh
+
+# Step 5: Create RBAC role bindings in Confluent Cloud
 ./scripts/create_cc_infra/create-cc-rbac.sh
 ```
 
-**That's it!** 🎉 Your MSK ACLs are now converted and applied as RBAC in Confluent Cloud.
+**That's it!** 🎉 Your MSK metadata (topics, schemas, and ACLs) is now migrated to Confluent Cloud with RBAC applied and credentials generated.
 
 ## 📁 Project Organization
 
@@ -100,6 +111,7 @@ scripts/
 │   └── README.md                  # Documentation
 ├── create_cc_infra/               # Confluent Cloud infrastructure
 │   ├── create-cc-topics.sh       # Topic creation
+│   ├── create-cc-schemas.sh      # Schema migration
 │   ├── create-cc-rbac.sh         # RBAC creation
 │   └── README.md                  # Documentation
 └── convert-acl-to-rbac.sh         # ACL to RBAC conversion
@@ -223,6 +235,123 @@ Examples:
 ```
 
 This script automatically creates topics in Confluent Cloud based on MSK topic configurations.
+
+### Schema Migration
+
+**Migrate Schemas from MSK to Confluent Cloud Schema Registry:**
+```bash
+./scripts/create_cc_infra/create-cc-schemas.sh [OPTIONS]
+
+Options:
+  -s, --schemas FILE      MSK schemas JSON file (default: generated_jsons/msk_jsons/msk_schemas.json)
+  -c, --config FILE       Confluent Cloud config file (default: ccloud.config)
+  --compatibility MODE   Schema compatibility mode (default: BACKWARD)
+                         Options: NONE, BACKWARD, BACKWARD_TRANSITIVE, FORWARD, FORWARD_TRANSITIVE, FULL, FULL_TRANSITIVE
+  --dry-run              Show what would be done without making changes
+  --force                Overwrite existing schemas (use with caution)
+  -v, --verbose          Enable verbose logging
+  -h, --help             Show help message
+
+Examples:
+  # Basic schema migration
+  ./scripts/create_cc_infra/create-cc-schemas.sh
+  
+  # Dry run to preview schema migration
+  ./scripts/create_cc_infra/create-cc-schemas.sh --dry-run
+  
+  # Migrate with specific compatibility mode
+  ./scripts/create_cc_infra/create-cc-schemas.sh --compatibility FULL
+  
+  # Force migration with verbose output
+  ./scripts/create_cc_infra/create-cc-schemas.sh --force --verbose
+```
+
+**Schema Migration Process:**
+1. **Extract** schemas from AWS Glue Schema Registry (MSK)
+2. **Validate** schema data and format compatibility
+3. **Check** existing subjects in Confluent Cloud Schema Registry
+4. **Convert** AWS Glue compatibility modes to Confluent Cloud format
+5. **Register** schemas with proper subject naming (`{registry_name}-{schema_name}`)
+6. **Verify** successful registration and report results
+
+**Key Features:**
+- ✅ **Multi-format Support**: AVRO, JSON, and Protobuf schemas
+- ✅ **Compatibility Mapping**: Automatic conversion from AWS Glue to Confluent Cloud compatibility modes
+- ✅ **Subject Naming**: Intelligent naming using registry and schema names
+- ✅ **Duplicate Detection**: Checks for existing subjects to prevent conflicts
+- ✅ **Performance Optimized**: Fast API calls with proper timeouts
+- ✅ **Comprehensive Reporting**: Detailed migration statistics and results
+- ✅ **Error Recovery**: Graceful handling of API failures and network issues
+
+**Schema Registry Configuration:**
+Ensure your `ccloud.config` includes Schema Registry credentials:
+```properties
+# Schema Registry Configuration
+schema.registry.url=https://psrc-xxxxx.region.gcp.confluent.cloud
+schema.registry.basic.auth.user.info=SR_API_KEY:SR_API_SECRET
+```
+
+This script automatically migrates schemas from AWS Glue Schema Registry to Confluent Cloud Schema Registry with proper compatibility settings.
+
+### Service Account Credentials Creation
+
+**Create Service Account Credentials in Confluent Cloud:**
+```bash
+./scripts/create_cc_infra/create-cc-sa-creds.sh [OPTIONS]
+
+Options:
+  -r, --rbac FILE         RBAC JSON file (default: generated_jsons/cc_jsons/cc_rbac.json)
+  -c, --config FILE       Confluent Cloud config file (default: ccloud.config)
+  -o, --output DIR        Credentials output directory (default: generated_jsons/cc_jsons/cc_credentials)
+  --dry-run              Show what would be done without making changes
+  --force                Recreate existing service accounts and keys
+  --no-skip-existing     Process all service accounts (don't skip existing ones)
+  -v, --verbose          Enable verbose logging
+  -h, --help             Show this help message
+
+Examples:
+  # Create credentials for all service accounts
+  ./scripts/create_cc_infra/create-cc-sa-creds.sh
+  
+  # Dry run to preview credential creation
+  ./scripts/create_cc_infra/create-cc-sa-creds.sh --dry-run
+  
+  # Force recreation with verbose output
+  ./scripts/create_cc_infra/create-cc-sa-creds.sh --force --verbose
+```
+
+**Credential Creation Process:**
+1. **Read** service accounts from RBAC conversion file
+2. **Check** for existing service accounts in Confluent Cloud
+3. **Create** service accounts if they don't exist
+4. **Generate** Kafka API keys for each service account
+5. **Organize** credentials in structured folder hierarchy
+6. **Create** multiple file formats for easy integration
+
+**Key Features:**
+- ✅ **Structured Organization**: Each service account gets its own folder
+- ✅ **Multiple Formats**: JSON metadata, text files, and Kafka properties
+- ✅ **Security First**: Auto-generates .gitignore to prevent credential leaks
+- ✅ **Comprehensive Reporting**: Summary of all created credentials
+- ✅ **Existing Account Handling**: Detects and handles existing service accounts
+- ✅ **Ready-to-Use**: Generates kafka.properties files for immediate use
+- ✅ **Safe Testing**: Dry-run mode for preview before execution
+
+**Output Structure:**
+```
+generated_jsons/cc_jsons/cc_credentials/
+├── service-account-1/
+│   ├── credentials.json          # Complete metadata and credentials
+│   ├── api-key.txt              # API key only (for scripts)
+│   ├── api-secret.txt           # API secret only (for scripts)
+│   └── kafka.properties         # Ready-to-use Kafka client config
+├── service-account-2/
+│   └── ... (same structure)
+├── credentials-summary.json     # Summary report of all credentials
+└── .gitignore                   # Prevents accidental git commits
+```
+
+This script automatically creates and organizes all necessary credentials for your migrated service accounts.
 
 ## 🔑 API Keys and Permissions
 
@@ -357,9 +486,9 @@ sasl.mechanisms=PLAIN
 confluent_cloud_key=YOUR_CLOUD_API_KEY
 confluent_cloud_secret=YOUR_CLOUD_API_SECRET
 
-# Optional: Schema Registry
-# schema.registry.url=https://psrc-xxxxx.region.aws.confluent.cloud
-# schema.registry.basic.auth.user.info=SR_API_KEY:SR_API_SECRET
+# Schema Registry (for schema migration)
+schema.registry.url=https://psrc-xxxxx.region.gcp.confluent.cloud
+schema.registry.basic.auth.user.info=SR_API_KEY:SR_API_SECRET
 ```
 
 **📖 See [API_KEYS_AND_PERMISSIONS.md](API_KEYS_AND_PERMISSIONS.md) for detailed information about:**
