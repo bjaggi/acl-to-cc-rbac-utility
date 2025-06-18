@@ -10,14 +10,22 @@ set -euo pipefail
 
 # Script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # Default configuration
-DEFAULT_PRINCIPALS_FILE="$PROJECT_ROOT/generated_jsons/msk_jsons/msk_principals.json"
-DEFAULT_CONFIG_FILE="$PROJECT_ROOT/ccloud.config"
-OUTPUT_FILE="$PROJECT_ROOT/generated_jsons/cc_jsons/cc_service_accounts.json"
+PRINCIPALS_FILE="$PROJECT_ROOT/generated_jsons/msk_jsons/msk_principals.json"
 RBAC_FILE="$PROJECT_ROOT/generated_jsons/cc_jsons/cc_rbac.json"
-JAR_FILE="$PROJECT_ROOT/target/msk-to-confluent-cloud.jar"
+OUTPUT_DIR="$PROJECT_ROOT/generated_jsons/cc_jsons"
+OUTPUT_FILE="$OUTPUT_DIR/cc_service_accounts.json"
+CREDENTIALS_DIR="$OUTPUT_DIR/cc_credentials"
+CONFIG_FILE="$PROJECT_ROOT/ccloud.config"
+ENVIRONMENT=""
+DRY_RUN=false
+VERBOSE=false
+FORCE=false
+
+# JAR file location
+JAR_FILE="$PROJECT_ROOT/release/msk-to-confluent-cloud.jar"
 
 # Colors for output
 RED='\033[0;31m'
@@ -385,21 +393,17 @@ show_output_summary() {
 
 # Function to show next steps
 show_next_steps() {
-    print_info "Next Steps:"
-    echo "1. 📋 Review the created service accounts in Confluent Cloud Console"
-    echo "2. 🔗 Verify resource IDs have been added to RBAC file: $RBAC_FILE"
-    echo "3. 🔑 Generate API keys for the service accounts if needed"
-    echo "4. 🔐 Apply RBAC role bindings using: scripts/create_cc_infra/create-cc-rbac.sh"
-    echo "5. 🧪 Test the service accounts with your applications"
+    print_info "Next steps:"
+    print_info "1. Create RBAC permissions:             ./scripts/create_cc_infra/create-cc-rbac.sh"
+    print_info "   OR Create ACLs (alternative):        ./scripts/create_cc_infra/create-cc-acls.sh"
     echo
-    print_info "For the complete migration workflow, see the project README.md"
+    print_info "NOTE: RBAC is recommended for Confluent Cloud. Use ACLs only if RBAC doesn't meet your needs."
 }
 
 # Main function
 main() {
-    # Default values
-    PRINCIPALS_FILE="$DEFAULT_PRINCIPALS_FILE"
-    CONFIG_FILE="$DEFAULT_CONFIG_FILE"
+    # Default values (already set at top of script, but can be overridden by command line args)
+    # PRINCIPALS_FILE and CONFIG_FILE are already set above
     DRY_RUN="false"
     VERBOSE="false"
     

@@ -72,6 +72,7 @@ public class ACLToRBACConverter {
         public String pattern_type;
         public String environment;
         public String cluster_id;
+        public String resource_id;  // Added to handle service account resource IDs
         
         // Default constructor for Jackson deserialization
         public ConfluentCloudRoleBinding() {
@@ -93,6 +94,7 @@ public class ACLToRBACConverter {
         public List<ConfluentCloudRoleBinding> role_bindings;
         public List<ServiceAccountInfo> service_accounts;
         public ConversionMetadata conversion_metadata;
+        public Object rbac_update_metadata;  // Added to handle metadata from service accounts script
         
         public ConfluentCloudRBACOutput() {
             this.role_bindings = new ArrayList<>();
@@ -105,6 +107,7 @@ public class ACLToRBACConverter {
         public String name;
         public String description;
         public String original_principal;
+        public String resource_id;  // Added to handle service account resource IDs
         
         // Default constructor for Jackson deserialization
         public ServiceAccountInfo() {
@@ -403,40 +406,58 @@ public class ACLToRBACConverter {
         // Check for help flag
         if (args.length > 0 && (args[0].equals("-h") || args[0].equals("--help"))) {
             System.out.println("MSK ACL to Confluent Cloud RBAC Converter");
-            System.out.println("Usage: java ACLToRBACConverter [output_file] [environment] [cluster_id] [options]");
-            System.out.println("  output_file - Output file for Confluent Cloud RBAC (default: generated_jsons/cc_jsons/cc_rbac.json)");
-            System.out.println("  environment - Target Confluent Cloud environment (default: env-xxxxx)");
-            System.out.println("  cluster_id  - Target Confluent Cloud cluster ID (default: lkc-xxxxx)");
+            System.out.println("Usage: java ACLToRBACConverter [options]");
             System.out.println("");
             System.out.println("Options:");
-            System.out.println("  --verbose   - Enable verbose logging");
-            System.out.println("  --help, -h  - Show this help message");
-            System.out.println("");
-            System.out.println("Note: Input file is always read from generated_jsons/msk_jsons/msk_acls.json");
+            System.out.println("  --input-file FILE     Input MSK ACLs JSON file (default: generated_jsons/msk_jsons/msk_acls.json)");
+            System.out.println("  --output-file FILE    Output Confluent Cloud RBAC JSON file (default: generated_jsons/cc_jsons/cc_rbac.json)");
+            System.out.println("  --environment-id ENV  Target Confluent Cloud environment ID (default: env-xxxxx)");
+            System.out.println("  --cluster-id CLUSTER Target Confluent Cloud cluster ID (default: lkc-xxxxx)");
+            System.out.println("  --verbose             Enable verbose logging");
+            System.out.println("  --help, -h            Show this help message");
             System.out.println("");
             System.out.println("Examples:");
             System.out.println("  java ACLToRBACConverter");
-            System.out.println("  java ACLToRBACConverter my_rbac.json env-abc123 lkc-xyz789");
+            System.out.println("  java ACLToRBACConverter --output-file my_rbac.json --environment-id env-abc123 --cluster-id lkc-xyz789");
             System.out.println("  java ACLToRBACConverter --verbose");
             System.exit(0);
         }
         
-        // Parse flags first
-        boolean verbose = Arrays.asList(args).contains("--verbose");
+        // Default values
+        String inputFile = "generated_jsons/msk_jsons/msk_acls.json";
+        String outputFile = "generated_jsons/cc_jsons/cc_rbac.json";
+        String environment = "env-xxxxx";
+        String clusterId = "lkc-xxxxx";
+        boolean verbose = false;
         
-        // Parse positional arguments (skip flags)
-        List<String> positionalArgs = new ArrayList<>();
-        for (String arg : args) {
-            if (!arg.startsWith("--")) {
-                positionalArgs.add(arg);
+        // Parse named arguments
+        for (int i = 0; i < args.length; i++) {
+            switch (args[i]) {
+                case "--input-file":
+                    if (i + 1 < args.length) {
+                        inputFile = args[++i];
+                    }
+                    break;
+                case "--output-file":
+                    if (i + 1 < args.length) {
+                        outputFile = args[++i];
+                    }
+                    break;
+                case "--environment-id":
+                    if (i + 1 < args.length) {
+                        environment = args[++i];
+                    }
+                    break;
+                case "--cluster-id":
+                    if (i + 1 < args.length) {
+                        clusterId = args[++i];
+                    }
+                    break;
+                case "--verbose":
+                    verbose = true;
+                    break;
             }
         }
-        
-        // Always read from generated_jsons/msk_jsons/msk_acls.json
-        String inputFile = "generated_jsons/msk_jsons/msk_acls.json";
-        String outputFile = positionalArgs.size() > 0 ? positionalArgs.get(0) : "generated_jsons/cc_jsons/cc_rbac.json";
-        String environment = positionalArgs.size() > 1 ? positionalArgs.get(1) : "env-xxxxx";
-        String clusterId = positionalArgs.size() > 2 ? positionalArgs.get(2) : "lkc-xxxxx";
         
         ACLToRBACConverter converter = new ACLToRBACConverter();
         

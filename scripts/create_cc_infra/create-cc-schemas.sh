@@ -407,6 +407,9 @@ migrate_schemas() {
     if [[ $failed_schemas -gt 0 ]]; then
         print_error "Some schemas failed to migrate. Check the logs above for details."
         return 1
+    elif [[ $migrated_schemas -eq 0 && $skipped_schemas -gt 0 ]]; then
+        print_success "All schemas already exist in Confluent Cloud - migration not needed!"
+        return 0
     elif [[ $migrated_schemas -eq 0 ]]; then
         print_warning "No schemas were migrated."
         return 1
@@ -470,11 +473,10 @@ main() {
         else
             print_success "$SUCCESS Schema migration completed successfully! $SUCCESS"
             echo
-            print_info "$ARROW Next steps:"
-            print_info "  $BULLET Verify schemas in Confluent Cloud Schema Registry console"
-            print_info "  $BULLET Update your applications to use the new Schema Registry URL"
-            print_info "  $BULLET Test schema evolution and compatibility"
-            print_info "  $BULLET Update producer/consumer configurations"
+            print_info "Next steps:"
+            print_info "1. Create consumer groups (optional):   ./scripts/create_cc_infra/create-cc-consumer-groups.sh"
+            print_info "2. Create service accounts:             ./scripts/create_cc_infra/create-cc-service-accounts.sh"
+            print_info "3. Create RBAC permissions:             ./scripts/create_cc_infra/create-cc-rbac.sh"
         fi
     else
         print_error "$ERROR Schema migration failed!"

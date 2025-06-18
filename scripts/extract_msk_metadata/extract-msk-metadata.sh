@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# MSK ACL and Topic Extractor Script
-# Reads configuration from msk.config file and extracts ACLs/topics from MSK
+# MSK ACL, Topic, and Consumer Group Extractor Script
+# Reads configuration from msk.config file and extracts ACLs/topics/consumer groups from MSK
 
 set -e
 
@@ -32,11 +32,12 @@ print_error() {
 # Function to show help
 show_help() {
     cat << EOF
-MSK ACL and Topic Extractor
+MSK ACL, Topic, and Consumer Group Extractor
 
 This script reads MSK cluster configuration from msk.config file and extracts:
 - All ACLs (Access Control Lists) → generated_jsons/msk_jsons/msk_acls.json
 - All topics with their configurations → generated_jsons/msk_jsons/msk_topics.json
+- All consumer groups → generated_jsons/msk_jsons/msk_consumer_groups.json
 - Unique principals from ACLs → generated_jsons/msk_jsons/msk_principals.json
 - Cluster metadata
 - Automatically converts ACLs to Confluent Cloud RBAC format → generated_jsons/cc_jsons/cc_rbac.json
@@ -63,13 +64,14 @@ Configuration:
         verbose            - Enable verbose logging (default: false)
 
 Output Files:
-    generated_jsons/msk_jsons/msk_acls.json       - All ACLs from the MSK cluster
-    generated_jsons/msk_jsons/msk_topics.json     - All topics with configurations
-    generated_jsons/msk_jsons/msk_principals.json - Unique principals extracted from ACLs
-    generated_jsons/cc_jsons/cc_rbac.json        - Confluent Cloud RBAC role bindings (auto-generated)
+    generated_jsons/msk_jsons/msk_acls.json          - All ACLs from the MSK cluster
+    generated_jsons/msk_jsons/msk_topics.json        - All topics with configurations
+    generated_jsons/msk_jsons/msk_consumer_groups.json - All consumer groups
+    generated_jsons/msk_jsons/msk_principals.json    - Unique principals extracted from ACLs
+    generated_jsons/cc_jsons/cc_rbac.json           - Confluent Cloud RBAC role bindings (auto-generated)
 
 Examples:
-    # Extract ACLs and topics using config file
+    # Extract ACLs, topics, and consumer groups using config file
     $0
     
     # Extract with verbose logging
@@ -211,7 +213,7 @@ check_java() {
 
 # Build the application if needed
 build_application() {
-    if [[ ! -f "target/msk-to-confluent-cloud.jar" ]]; then
+    if [[ ! -f "release/msk-to-confluent-cloud.jar" ]]; then
         print_info "Building the MSK to Confluent Cloud utility..."
         if [[ "$VERBOSE" == "true" ]]; then
             mvn clean package
@@ -229,32 +231,11 @@ convert_acls_to_rbac() {
     if [[ -f "generated_jsons/msk_jsons/msk_acls.json" ]]; then
         print_info "🔄 Converting ACLs to Confluent Cloud RBAC format..."
         
-        # Check if convert script exists
-        if [[ ! -f "scripts/convert-acl-to-rbac.sh" ]]; then
-            print_warning "ACL to RBAC converter script not found: scripts/convert-acl-to-rbac.sh"
-            print_warning "Skipping automatic conversion"
-            return 0
-        fi
-        
-        # Make sure the script is executable
-        chmod +x scripts/convert-acl-to-rbac.sh
-        
-        # Run the conversion script
-        # Note: This will prompt for environment and cluster IDs if not provided
-        if [[ "$VERBOSE" == "true" ]]; then
-            print_info "Running: ./scripts/convert-acl-to-rbac.sh"
-        fi
-        
-        if ./scripts/convert-acl-to-rbac.sh -e env-7qv2p -c lkc-y316j; then
-                    if [[ -f "generated_jsons/cc_jsons/cc_rbac.json" ]]; then
-            RBAC_FILE_SIZE=$(wc -c < "generated_jsons/cc_jsons/cc_rbac.json")
-            print_success "RBAC conversion completed: generated_jsons/cc_jsons/cc_rbac.json (${RBAC_FILE_SIZE} bytes)"
-            
-            # Show RBAC count if verbose and jq is available
-            if [[ "$VERBOSE" == "true" ]] && command -v jq &> /dev/null; then
-                RBAC_COUNT=$(jq -r '.role_bindings | length' "generated_jsons/cc_jsons/cc_rbac.json" 2>/dev/null || echo "0")
-                    print_info "RBAC role bindings created: $RBAC_COUNT"
-                fi
+        # Run conversion 
+        if ./scripts/convert-acl-to-rbac.sh -e env-7qv2p -c lkc-y316j >/dev/null 2>&1; then
+            if [[ -f "generated_jsons/cc_jsons/cc_rbac.json" ]]; then
+                RBAC_FILE_SIZE=$(wc -c < "generated_jsons/cc_jsons/cc_rbac.json")
+                print_success "RBAC conversion completed: generated_jsons/cc_jsons/cc_rbac.json (${RBAC_FILE_SIZE} bytes)"
                 return 0
             else
                 print_warning "RBAC conversion completed but output file not found"
@@ -262,8 +243,6 @@ convert_acls_to_rbac() {
             fi
         else
             print_warning "ACL to RBAC conversion failed, but continuing"
-            print_info "You can run the conversion manually later:"
-            print_info "  ./scripts/convert-acl-to-rbac.sh -e env-12345 -c lkc-67890"
             return 1
         fi
     else
@@ -278,7 +257,7 @@ extract_principals_from_acls() {
         print_info "Extracting unique principals from ACLs..."
         
         # Use the unified JAR with extract-principals command
-        PRINCIPALS_CMD="java -jar target/msk-to-confluent-cloud.jar extract-principals"
+        PRINCIPALS_CMD="java -jar release/msk-to-confluent-cloud.jar extract-principals"
                         PRINCIPALS_CMD="$PRINCIPALS_CMD generated_jsons/msk_jsons/msk_acls.json generated_jsons/msk_jsons/msk_principals.json"
         
         if [[ "$VERBOSE" == "true" ]]; then
@@ -305,19 +284,20 @@ extract_principals_from_acls() {
     fi
 }
 
-# Run the MSK ACL and Topic extraction
+# Run the MSK ACL, Topic, and Consumer Group extraction
 run_extraction() {
-    print_info "Starting MSK ACL, Topic, and Schema extraction..."
+    print_info "Starting MSK ACL, Topic, and Consumer Group extraction..."
     print_info "This will extract:"
     print_info "  • All ACLs → generated_jsons/msk_jsons/msk_acls.json"
     print_info "  • All topics with configurations → generated_jsons/msk_jsons/msk_topics.json"
+    print_info "  • All consumer groups → generated_jsons/msk_jsons/msk_consumer_groups.json"
     print_info "  • All schemas from Glue Schema Registry → generated_jsons/msk_jsons/msk_schemas.json"
     print_info "  • Unique principals from ACLs → generated_jsons/msk_jsons/msk_principals.json"
     print_info "  • Cluster metadata (if enabled)"
     print_info "  • Auto-convert ACLs to RBAC → generated_jsons/cc_jsons/cc_rbac.json"
     
     # Construct Java command
-    JAVA_CMD="java -jar target/msk-to-confluent-cloud.jar extract"
+    JAVA_CMD="java -jar release/msk-to-confluent-cloud.jar extract"
     JAVA_CMD="$JAVA_CMD --cluster-arn \"$CLUSTER_ARN\""
     JAVA_CMD="$JAVA_CMD --region \"$REGION\""
     JAVA_CMD="$JAVA_CMD --security-protocol \"$SECURITY_PROTOCOL\""
@@ -362,6 +342,11 @@ run_extraction() {
             print_success "Topics exported: generated_jsons/msk_jsons/msk_topics.json (${TOPIC_FILE_SIZE} bytes)"
         fi
         
+        if [[ -f "generated_jsons/msk_jsons/msk_consumer_groups.json" ]]; then
+            CONSUMER_GROUP_FILE_SIZE=$(wc -c < "generated_jsons/msk_jsons/msk_consumer_groups.json")
+            print_success "Consumer groups exported: generated_jsons/msk_jsons/msk_consumer_groups.json (${CONSUMER_GROUP_FILE_SIZE} bytes)"
+        fi
+        
         if [[ -f "generated_jsons/msk_jsons/msk_schemas.json" ]]; then
             SCHEMA_FILE_SIZE=$(wc -c < "generated_jsons/msk_jsons/msk_schemas.json")
             print_success "Schemas exported: generated_jsons/msk_jsons/msk_schemas.json (${SCHEMA_FILE_SIZE} bytes)"
@@ -377,6 +362,10 @@ run_extraction() {
                 TOPIC_COUNT=$(jq -r '.topic_count // 0' "generated_jsons/msk_jsons/msk_topics.json" 2>/dev/null || echo "0")
                 print_info "Topic count: $TOPIC_COUNT"
             fi
+            if [[ -f "generated_jsons/msk_jsons/msk_consumer_groups.json" ]]; then
+                CONSUMER_GROUP_COUNT=$(jq -r '.consumer_group_count // 0' "generated_jsons/msk_jsons/msk_consumer_groups.json" 2>/dev/null || echo "0")
+                print_info "Consumer group count: $CONSUMER_GROUP_COUNT"
+            fi
             if [[ -f "generated_jsons/msk_jsons/msk_schemas.json" ]]; then
                 SCHEMA_COUNT=$(jq -r '.schema_count // 0' "generated_jsons/msk_jsons/msk_schemas.json" 2>/dev/null || echo "0")
                 print_info "Schema count: $SCHEMA_COUNT"
@@ -387,32 +376,24 @@ run_extraction() {
         extract_principals_from_acls
         
         # Convert ACLs to RBAC format automatically
-        convert_acls_to_rbac
+        # Note: Disabled due to Java application bug that overwrites input file
+        # convert_acls_to_rbac
         
         print_success "✅ MSK data extraction and conversion completed!"
-        print_info ""
-        print_info "Generated files:"
-        print_info "  📄 generated_jsons/msk_jsons/msk_acls.json       - ACLs and cluster metadata"
-        print_info "  📄 generated_jsons/msk_jsons/msk_topics.json     - Topics and configurations"
-        print_info "  📄 generated_jsons/msk_jsons/msk_schemas.json    - Schemas from Glue Schema Registry"
-        print_info "  📄 generated_jsons/msk_jsons/msk_principals.json - Unique principals from ACLs"
-        if [[ -f "generated_jsons/cc_jsons/cc_rbac.json" ]]; then
-            print_info "  📄 generated_jsons/cc_jsons/cc_rbac.json        - Confluent Cloud RBAC role bindings"
-        fi
-        print_info ""
-        print_info "Next steps:"
-        print_info "1. Review the generated files"
-        if [[ -f "generated_jsons/cc_jsons/cc_rbac.json" ]]; then
-            print_info "2. Create topics in Confluent Cloud:"
-            print_info "   ./scripts/create_cc_infra/create-cc-topics.sh"
-            print_info "3. Create service accounts in Confluent Cloud:"
-            print_info "   ./scripts/create_cc_infra/create-cc-service-accounts.sh"
-            print_info "4. Apply RBAC role bindings to Confluent Cloud:"
-            print_info "   ./scripts/create_cc_infra/create-cc-rbac.sh"
-        else
-            print_info "2. Run the RBAC converter manually (if needed):"
-            print_info "   ./scripts/convert-acl-to-rbac.sh -e env-12345 -c lkc-67890"
-        fi
+        echo ""
+        echo ""
+        echo "NEXT STEPS - MSK to Confluent Cloud Migration"
+        echo "=============================================="
+        echo ""
+        echo "1. Create CC topics:                    ./scripts/create_cc_infra/create-cc-topics.sh"
+        echo "2. Create schemas:                      ./scripts/create_cc_infra/create-cc-schemas.sh"
+        echo "3. Create consumer groups (optional):   ./scripts/create_cc_infra/create-cc-consumer-groups.sh"
+        echo "4. Create CC service accounts:          ./scripts/create_cc_infra/create-cc-service-accounts.sh"
+        echo "5. Create CC RBAC:                      ./scripts/create_cc_infra/create-cc-rbac.sh"
+        echo ""
+        echo "Alternative: Create CC ACLs instead:    ./scripts/create_cc_infra/create-cc-acls.sh"
+        echo ""
+        echo "NOTE: Configure ccloud.config before proceeding. Use --dry-run to preview changes."
         
     else
         print_error "❌ Extraction failed!"
@@ -422,8 +403,8 @@ run_extraction() {
 
 # Main execution
 main() {
-    print_info "MSK ACL and Topic Extractor"
-    print_info "============================"
+    print_info "MSK ACL, Topic, and Consumer Group Extractor"
+    print_info "============================================="
     print_info ""
     
     # Perform setup

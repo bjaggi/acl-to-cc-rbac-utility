@@ -177,9 +177,9 @@ check_prerequisites() {
     fi
     
     # Check for JAR file
-    if [[ ! -f "target/msk-to-confluent-cloud.jar" ]]; then
-        print_error "MSK utility JAR not found: target/msk-to-confluent-cloud.jar"
-        print_info "Please build the project first: mvn clean package"
+    if [[ ! -f "release/msk-to-confluent-cloud.jar" ]]; then
+        print_error "MSK utility JAR not found: release/msk-to-confluent-cloud.jar"
+        print_error "Please build the project first: mvn clean package && cp target/msk-to-confluent-cloud.jar release/"
         exit 1
     fi
     
@@ -224,7 +224,7 @@ extract_msk_schemas() {
     print_verbose "AWS Region: $region"
     
     # Extract schemas using Java utility
-    local extract_cmd="java -jar target/msk-to-confluent-cloud.jar extract"
+    local extract_cmd="java -jar release/msk-to-confluent-cloud.jar extract"
     extract_cmd+=" --cluster-arn \"$cluster_arn\""
     extract_cmd+=" --region \"$region\""
     extract_cmd+=" --security-protocol \"SASL_SSL\""

@@ -4,24 +4,36 @@ A comprehensive Java-based utility that extracts metadata from Amazon MSK (Manag
 
 ## 🚀 Features
 
-- ✅ **Complete MSK Metadata Extraction**: ACLs, Topics, and Schemas (all versions)
+- ✅ **Complete MSK Metadata Extraction**: ACLs, Topics, Consumer Groups, and Schemas (all versions)
 - ✅ **Automated Schema Registry Integration**: AWS Glue Schema Registry support
 - ✅ **Schema Migration**: Migrate schemas from AWS Glue to Confluent Cloud Schema Registry
+- ✅ **Consumer Group Analysis**: Extract and analyze consumer group information
 - ✅ **Confluent Cloud RBAC Conversion**: Convert MSK ACLs to CC role bindings
 - ✅ **Automated RBAC Application**: Automatically apply roles to Confluent Cloud
 - ✅ **Service Account Management**: Auto-create and manage service accounts
+- ✅ **Credentials Management**: Generate and organize service account credentials
 - ✅ **Multiple Authentication Methods**: SSL, SASL_SSL, and IAM authentication
 - ✅ **Smart Configuration**: Automatic JAVA_HOME detection and bootstrap server selection
 - ✅ **Comprehensive Logging**: Detailed logging with configurable levels
 - ✅ **Dry Run Mode**: Preview changes before applying
 - ✅ **End-to-End Workflow**: Complete migration pipeline from MSK to Confluent Cloud
 
+## 🎯 Getting Started
+
+**Want to migrate from MSK to Confluent Cloud?** It's simple:
+
+1. **Setup**: Configure your MSK and Confluent Cloud connections
+2. **Extract**: Run `./scripts/extract_msk_metadata/extract-msk-metadata.sh` 
+3. **Migrate**: Follow the step-by-step sequence below
+
+**Pre-built and ready to use!** - No compilation required.
+
 ## 📋 Prerequisites
 
 - **Java 11 or higher** (Java 17 recommended)
   - For Amazon Linux/EC2: `sudo yum install java-17-amazon-corretto`
   - For Ubuntu/Debian: `sudo apt-get install openjdk-17-jdk`
-- **Maven 3.6 or higher**
+- **Maven 3.6 or higher** (only if you want to rebuild)
   - For Amazon Linux: `sudo yum install maven`
   - For Ubuntu/Debian: `sudo apt-get install maven`
 - **Confluent CLI** (for automated RBAC application)
@@ -33,14 +45,18 @@ A comprehensive Java-based utility that extracts metadata from Amazon MSK (Manag
 
 ## ⚡ Quick Start - Complete Migration
 
-### 1. **Setup and Build**
+Follow this **simple sequence** for a smooth MSK to Confluent Cloud migration:
+
+### 1. **Setup (Optional Build)**
 ```bash
 # Make scripts executable
-chmod +x build.sh scripts/extract_msk_metadata/extract-msk-metadata.sh scripts/create_cc_infra/create-cc-topics.sh scripts/create_cc_infra/create-cc-rbac.sh
+chmod +x scripts/extract_msk_metadata/extract-msk-metadata.sh scripts/create_cc_infra/*.sh
 
-# Build the application
-./build.sh
+# Optional: Build latest JAR (latest version already included in release/ folder)
+# ./build.sh
 ```
+
+**Note**: The utility comes with a pre-built JAR file in the `release/` folder, so building is optional unless you've made code changes.
 
 ### 2. **Configure MSK Connection**
 ```bash
@@ -51,14 +67,13 @@ vi msk.config
 ### 3. **Configure Confluent Cloud Connection**
 ```bash
 # Create Confluent Cloud configuration
-vi generated_jsons/ccloud.config
+vi ccloud.config
 ```
 Add your Confluent Cloud details:
 ```properties
 # Confluent Cloud Configuration
 confluent.cloud.environment=env-12345
 confluent.cloud.cluster=lkc-67890
-confluent.cloud.organization=YOUR_ORG_ID
 
 # Kafka API Keys (for topic operations)
 sasl.username=YOUR_KAFKA_API_KEY
@@ -76,27 +91,45 @@ schema.registry.url=https://psrc-xxxxx.region.gcp.confluent.cloud
 schema.registry.basic.auth.user.info=SR_API_KEY:SR_API_SECRET
 ```
 
-**⚠️ Important**: You need **both** Kafka API keys AND Cloud API keys with proper permissions. See [API_KEYS_AND_PERMISSIONS.md](API_KEYS_AND_PERMISSIONS.md) for details.
+**⚠️ Important**: You need **both** Kafka API keys AND Cloud API keys with proper permissions.
 
-### 4. **Run Complete Migration**
+### 4. **Execute Migration Sequence**
+
+**🚀 Start Here**: Run the first script to extract all MSK metadata:
+
 ```bash
-# Step 1: Extract all MSK metadata and auto-convert ACLs to RBAC
+# STEP 1: Extract all MSK metadata (START HERE!)
 ./scripts/extract_msk_metadata/extract-msk-metadata.sh
-
-# Step 2: Create topics in Confluent Cloud
-./scripts/create_cc_infra/create-cc-topics.sh
-
-# Step 3: Migrate schemas to Confluent Cloud Schema Registry
-./scripts/create_cc_infra/create-cc-schemas.sh
-
-# Step 4: Create service account credentials  
-./scripts/create_cc_infra/create-cc-sa-creds.sh
-
-# Step 5: Create RBAC role bindings in Confluent Cloud
-./scripts/create_cc_infra/create-cc-rbac.sh
 ```
 
-**That's it!** 🎉 Your MSK metadata (topics, schemas, and ACLs) is now migrated to Confluent Cloud with RBAC applied and credentials generated.
+**Then follow this sequence for complete migration:**
+
+```bash
+# STEP 2: Create topics in Confluent Cloud 
+./scripts/create_cc_infra/create-cc-topics.sh
+
+# STEP 3: Migrate schemas to Confluent Cloud Schema Registry
+./scripts/create_cc_infra/create-cc-schemas.sh
+
+# STEP 4: Create service accounts in Confluent Cloud
+./scripts/create_cc_infra/create-cc-service-accounts.sh
+
+# STEP 5: Apply RBAC role bindings to Confluent Cloud
+./scripts/create_cc_infra/create-cc-rbac.sh
+
+# STEP 6: Generate service account credentials (OPTIONAL)
+./scripts/create_cc_infra/create-cc-sa-creds.sh
+```
+
+**Note**: Consumer groups are extracted for analysis but not automatically migrated. Use the generated `msk_consumer_groups.json` as reference for manual recreation if needed.
+
+**🎉 Migration Complete!** Your MSK infrastructure is now fully migrated to Confluent Cloud with:
+- ✅ Topics created with original configurations
+- ✅ Schemas migrated to Schema Registry
+- ✅ Consumer groups analyzed (reference data for manual recreation)
+- ✅ Service accounts created
+- ✅ RBAC role bindings applied
+- ✅ Credentials generated and organized (if needed)
 
 ## 📁 Project Organization
 
@@ -123,11 +156,23 @@ All generated files are organized in the `generated_jsons/` folder:
 
 ```
 generated_jsons/
-├── msk_acls.json        # Extracted MSK ACLs
-├── msk_topics.json      # Extracted MSK topics with configurations
-├── msk_principals.json  # Unique principals extracted from ACLs
-├── msk_schemas.json     # Extracted schemas (all versions)
-└── cc_rbac.json         # Auto-converted Confluent Cloud RBAC rules
+├── msk_jsons/                     # MSK extracted data
+│   ├── msk_acls.json             # Extracted MSK ACLs
+│   ├── msk_topics.json           # Extracted MSK topics with configurations
+│   ├── msk_consumer_groups.json  # Extracted MSK consumer groups
+│   ├── msk_principals.json       # Unique principals extracted from ACLs
+│   └── msk_schemas.json          # Extracted schemas (all versions)
+├── cc_jsons/                     # Confluent Cloud ready data
+│   ├── cc_rbac.json              # Auto-converted Confluent Cloud RBAC rules
+│   ├── cc_service_accounts.json  # Service account details
+│   └── cc_credentials/           # Generated service account credentials
+│       ├── service-account-1/
+│       │   ├── credentials.json   # Complete metadata
+│       │   ├── api-key.txt       # API key only
+│       │   ├── api-secret.txt    # API secret only
+│       │   └── kafka.properties  # Ready-to-use config
+│       └── ...
+└── ccloud.config                # Confluent Cloud configuration
 ```
 
 ## 🔧 Detailed Usage

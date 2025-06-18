@@ -7,8 +7,15 @@ set -e
 
 # Default values
 TOPICS_FILE="generated_jsons/msk_jsons/msk_topics.json"
+CONFIG_FILE="ccloud.config"
+OUTPUT_FILE="generated_jsons/cc_jsons/cc_topics_created.json"
 DRY_RUN=false
 VERBOSE=false
+FORCE=false
+SKIP_EXISTING=true
+PARTITIONS=""
+REPLICATION_FACTOR=""
+TOPIC_ICON="📝"
 
 # Colors for output
 RED='\033[0;31m'
@@ -72,6 +79,12 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+print_verbose() {
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo -e "${BLUE}[VERBOSE]${NC} $1"
+    fi
+}
+
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -101,21 +114,27 @@ done
 
 # Check prerequisites
 check_prerequisites() {
-    # Check if Java is available
+    print_info "Checking prerequisites..."
+    
+    # Check for required tools
+    if ! command -v jq &> /dev/null; then
+        print_error "jq is required but not installed. Please install jq."
+        exit 1
+    fi
+    
     if ! command -v java &> /dev/null; then
-        print_error "Java is not installed or not in PATH"
-        print_info "Please install Java 11 or higher"
+        print_error "Java is required but not installed. Please install Java 8 or higher."
         exit 1
     fi
     
     # Check if unified JAR exists
-    if [[ ! -f "target/msk-to-confluent-cloud.jar" ]]; then
-        print_error "Unified JAR not found: target/msk-to-confluent-cloud.jar"
-        print_info "Please run ./build.sh to build the application"
+    if [[ ! -f "release/msk-to-confluent-cloud.jar" ]]; then
+        print_error "Unified JAR not found: release/msk-to-confluent-cloud.jar"
+        print_error "Please build the project first: mvn clean package && cp target/msk-to-confluent-cloud.jar release/"
         exit 1
     fi
     
-    print_success "Java topic creator available"
+    print_success "Prerequisites check passed"
     
     # Check if topics file exists
     if [[ ! -f "$TOPICS_FILE" ]]; then
@@ -143,14 +162,17 @@ check_prerequisites() {
 }
 
 # Create topics using Java API
-create_topics_java() {
-    print_info "Creating topics in Confluent Cloud using Java API..."
+create_topics_with_java() {
+    print_info "$TOPIC_ICON Creating topics using Java..."
     
-    # Build Java command
-    local java_cmd="java -jar target/msk-to-confluent-cloud.jar create-topics"
-    java_cmd+=" \"$TOPICS_FILE\""
-    java_cmd+=" \"ccloud.config\""
+    local java_cmd="java -jar release/msk-to-confluent-cloud.jar create-topics"
     
+    # Add common arguments
+    java_cmd+=" --topics-file \"$TOPICS_FILE\""
+    java_cmd+=" --config-file \"$CONFIG_FILE\""
+    java_cmd+=" --output-file \"$OUTPUT_FILE\""
+    
+    # Add optional arguments
     if $DRY_RUN; then
         java_cmd+=" --dry-run"
     fi
@@ -159,11 +181,25 @@ create_topics_java() {
         java_cmd+=" --verbose"
     fi
     
-    if $VERBOSE; then
-        print_info "Executing: $java_cmd"
+    if $FORCE; then
+        java_cmd+=" --force"
     fi
     
-    # Execute the Java application
+    if $SKIP_EXISTING; then
+        java_cmd+=" --skip-existing"
+    fi
+    
+    if [[ -n "$PARTITIONS" ]]; then
+        java_cmd+=" --default-partitions $PARTITIONS"
+    fi
+    
+    if [[ -n "$REPLICATION_FACTOR" ]]; then
+        java_cmd+=" --default-replication-factor $REPLICATION_FACTOR"
+    fi
+    
+    print_verbose "Executing: $java_cmd"
+    
+    # Execute the Java command
     if eval "$java_cmd"; then
         print_success "Topic creation completed successfully"
         return 0
@@ -182,18 +218,17 @@ main() {
     check_prerequisites
     
     # Create topics
-    create_topics_java
+    create_topics_with_java
     
     if $DRY_RUN; then
         print_info "Dry run completed. Use without --dry-run to create topics."
     else
         print_success "Topic creation completed! 🎉"
         print_info "Next steps:"
-        print_info "1. Verify topics in Confluent Cloud console"
-        print_info "2. Test topic access with your applications"
-        print_info "3. Monitor topic performance and adjust configurations if needed"
-        print_info "4. Consider creating service accounts: ./scripts/create_cc_infra/create-cc-service-accounts.sh"
-        print_info "5. Consider creating RBAC permissions: ./scripts/create_cc_infra/create-cc-rbac.sh"
+        print_info "1. Migrate schemas:                     ./scripts/create_cc_infra/create-cc-schemas.sh"
+        print_info "2. Create service accounts:             ./scripts/create_cc_infra/create-cc-service-accounts.sh"
+        print_info "3. Create RBAC permissions:             ./scripts/create_cc_infra/create-cc-rbac.sh"
+        
     fi
 }
 

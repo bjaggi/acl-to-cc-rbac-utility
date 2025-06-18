@@ -110,108 +110,105 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Check if Java is available
-check_java() {
+print_processing() {
+    echo -e "${BLUE}[PROCESSING]${NC} $1"
+}
+
+show_conversion_summary() {
+    if [[ -f "$OUTPUT_FILE" ]]; then
+        print_info "Conversion Summary:"
+        print_info "=================="
+        print_info "Input file:  $INPUT_FILE"
+        print_info "Output file: $OUTPUT_FILE"
+        
+        # Count role bindings if the file contains JSON
+        if command -v jq &> /dev/null && [[ -s "$OUTPUT_FILE" ]]; then
+            local role_count=$(jq -r '.roleBindings | length' "$OUTPUT_FILE" 2>/dev/null || echo "0")
+            print_info "Role bindings created: $role_count"
+        fi
+        
+        print_info "File size: $(du -h "$OUTPUT_FILE" | cut -f1)"
+    else
+        print_warning "Output file not found: $OUTPUT_FILE"
+    fi
+}
+
+check_prerequisites() {
+    print_processing "Validating prerequisites..."
+    
+    # Check if Java is available
     if ! command -v java &> /dev/null; then
         print_error "Java is not installed or not in PATH"
         print_info "Please install Java 11 or higher"
         exit 1
     fi
     
-    JAVA_VERSION=$(java -version 2>&1 | head -n1 | awk -F '"' '{print $2}' | awk -F '.' '{print $1}')
-    if [[ $JAVA_VERSION -lt 11 ]]; then
-        print_error "Java 11 or higher is required (found Java $JAVA_VERSION)"
+    # Check if JAR file exists
+    if [[ ! -f "release/msk-to-confluent-cloud.jar" ]]; then
+        print_error "JAR file not found: release/msk-to-confluent-cloud.jar"
+        print_info "Please run './build.sh' to build the project"
         exit 1
     fi
     
-    print_info "Using Java version: $(java -version 2>&1 | head -n1)"
-}
-
-# Check if Maven is available
-check_maven() {
-    if ! command -v mvn &> /dev/null; then
-        print_error "Maven is not installed or not in PATH"
-        print_info "Please install Maven 3.6 or higher"
-        exit 1
-    fi
-    
-    print_info "Using Maven version: $(mvn -version | head -n1)"
-}
-
-# Build the application if needed
-build_application() {
-    if [[ ! -f "target/msk-to-confluent-cloud.jar" ]]; then
-        print_info "Building the application..."
-        if $VERBOSE; then
-            mvn clean package
-        else
-            mvn clean package -q
-        fi
-        print_success "Application built successfully"
-        # Copy to release folder
-            if [[ -f "target/msk-to-confluent-cloud.jar" ]]; then
+    # Copy JAR to release directory if it doesn't exist there
+    if [[ -f "target/msk-to-confluent-cloud.jar" && ! -f "release/msk-to-confluent-cloud.jar" ]]; then
+        mkdir -p release
         cp target/msk-to-confluent-cloud.jar release/
-            print_info "Copied jar to release folder"
-        fi
-    else
-        print_info "Using existing compiled application"
+        print_success "JAR file copied to release directory"
     fi
+    
+    print_success "Java ACL converter available"
 }
 
-# Validate input file (always generated_jsons/msk_jsons/msk_acls.json)
-validate_input() {
-    REQUIRED_INPUT_FILE="generated_jsons/msk_jsons/msk_acls.json"
+convert_acls_to_rbac() {
+    print_processing "Converting ACLs to RBAC using Java..."
     
-    if [[ ! -f "$REQUIRED_INPUT_FILE" ]]; then
-        print_error "Required input file does not exist: $REQUIRED_INPUT_FILE"
-        print_error "Please run the MSK ACL extractor first to generate this file:"
-        print_error "  ./scripts/extract_msk_metadata/extract-msk-metadata.sh"
-        exit 1
+    # Create output directory if it doesn't exist
+    mkdir -p "$(dirname "$OUTPUT_FILE")"
+    
+    # Prepare Java command
+    JAVA_CMD="java -jar release/msk-to-confluent-cloud.jar convert"
+    
+    # Add required arguments
+    JAVA_CMD="$JAVA_CMD --input-file \"$INPUT_FILE\""
+    JAVA_CMD="$JAVA_CMD --output-file \"$OUTPUT_FILE\""
+    
+    # Add optional arguments
+    if [[ "$DRY_RUN" == "true" ]]; then
+        JAVA_CMD="$JAVA_CMD --dry-run"
     fi
     
-    # Check if file is valid JSON
-    if ! python3 -m json.tool "$REQUIRED_INPUT_FILE" > /dev/null 2>&1; then
-        print_error "Input file is not valid JSON: $REQUIRED_INPUT_FILE"
-        exit 1
+    if [[ "$VERBOSE" == "true" ]]; then
+        JAVA_CMD="$JAVA_CMD --verbose"
     fi
     
-    print_info "Input file validated: $REQUIRED_INPUT_FILE"
-}
-
-# Run the conversion
-run_conversion() {
-    print_info "Starting ACL to RBAC conversion..."
-    print_info "Input file: generated_jsons/msk_jsons/msk_acls.json (hardcoded)"
-    print_info "Output file: $OUTPUT_FILE"
-    print_info "Target environment: $ENVIRONMENT"
-    print_info "Target cluster: $CLUSTER_ID"
-    
-    # Construct Java command (no longer needs input file as argument)
-    JAVA_CMD="java -jar target/msk-to-confluent-cloud.jar convert"
-    JAVA_CMD="$JAVA_CMD \"$OUTPUT_FILE\" \"$ENVIRONMENT\" \"$CLUSTER_ID\""
-    
-    if $VERBOSE; then
-        print_info "Running command: $JAVA_CMD"
+    if [[ "$FORCE" == "true" ]]; then
+        JAVA_CMD="$JAVA_CMD --force"
     fi
     
-    # Run the conversion
-    if eval $JAVA_CMD; then
-        print_success "Conversion completed successfully!"
+    if [[ -n "$CLUSTER_ID" ]]; then
+        JAVA_CMD="$JAVA_CMD --cluster-id \"$CLUSTER_ID\""
+    fi
+    
+    if [[ -n "$ENVIRONMENT" ]]; then
+        JAVA_CMD="$JAVA_CMD --environment-id \"$ENVIRONMENT\""
+    fi
+    
+    print_info "Executing: $JAVA_CMD"
+    
+    # Execute the conversion
+    if eval "$JAVA_CMD"; then
+        print_success "ACL to RBAC conversion completed successfully"
         
-        # Display output file info
+        # Show conversion summary if output file exists
         if [[ -f "$OUTPUT_FILE" ]]; then
-            FILE_SIZE=$(wc -c < "$OUTPUT_FILE")
-            print_info "Output file created: $OUTPUT_FILE (${FILE_SIZE} bytes)"
-            
-            # Show first few lines of output if verbose
-            if $VERBOSE; then
-                print_info "Output file preview:"
-                head -20 "$OUTPUT_FILE"
-            fi
+            show_conversion_summary
         fi
+        
+        return 0
     else
-        print_error "Conversion failed!"
-        exit 1
+        print_error "ACL to RBAC conversion failed"
+        return 1
     fi
 }
 
@@ -221,13 +218,10 @@ main() {
     print_info "=========================================="
     
     # Perform checks
-    check_java
-    check_maven
-    validate_input
+    check_prerequisites
     
-    # Build and run
-    build_application
-    run_conversion
+    # Convert ACLs to RBAC
+    convert_acls_to_rbac
     
     print_success "All done! 🎉"
     print_info "Next steps:"

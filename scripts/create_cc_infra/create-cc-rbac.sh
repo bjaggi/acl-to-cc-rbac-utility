@@ -9,8 +9,15 @@ set -e
 # Default values
 RBAC_FILE="generated_jsons/cc_jsons/cc_rbac.json"
 SERVICE_ACCOUNTS_FILE="generated_jsons/cc_jsons/cc_service_accounts.json"
+CONFIG_FILE="ccloud.config"
+OUTPUT_FILE="generated_jsons/cc_jsons/cc_rbac_applied.json"
 DRY_RUN=false
 VERBOSE=false
+FORCE=false
+SKIP_EXISTING=true
+
+# Icons
+RBAC_ICON="🔐"
 
 # Colors for output
 RED='\033[0;31m'
@@ -105,6 +112,12 @@ print_stats() {
     echo -e "${GREEN}📊 $1${NC}"
 }
 
+print_verbose() {
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo -e "${BLUE}[VERBOSE]${NC} $1"
+    fi
+}
+
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -138,51 +151,33 @@ done
 
 # Check prerequisites
 check_prerequisites() {
-    print_processing "Validating prerequisites..."
+    print_processing "Checking prerequisites..."
     
-    # Check if Java is available
+    # Check for required tools
+    local missing_tools=()
+    
+    if ! command -v jq &> /dev/null; then
+        missing_tools+=("jq")
+    fi
+    
     if ! command -v java &> /dev/null; then
-        print_error "Java is not installed or not in PATH"
-        print_info "Please install Java 11 or higher"
+        missing_tools+=("java")
+    fi
+    
+    if [[ ${#missing_tools[@]} -gt 0 ]]; then
+        print_error "Missing required tools: ${missing_tools[*]}"
+        print_error "Please install the missing tools and try again"
         exit 1
     fi
     
-    # Check if RBAC applicator JAR exists
-    if [[ ! -f "target/msk-to-confluent-cloud.jar" ]]; then
-        print_error "Unified JAR not found: target/msk-to-confluent-cloud.jar"
-        print_info "Please run 'mvn clean package' to build the application"
+    # Check if unified JAR exists
+    if [[ ! -f "release/msk-to-confluent-cloud.jar" ]]; then
+        print_error "Unified JAR not found: release/msk-to-confluent-cloud.jar"
+        print_error "Please build the project first: mvn clean package && cp target/msk-to-confluent-cloud.jar release/"
         exit 1
     fi
     
-    print_success "Java RBAC applicator available"
-    
-    # Check if RBAC file exists
-    if [[ ! -f "$RBAC_FILE" ]]; then
-        print_error "RBAC file not found: $RBAC_FILE"
-        exit 1
-    fi
-    
-    # Check if service accounts file exists
-    if [[ ! -f "$SERVICE_ACCOUNTS_FILE" ]]; then
-        print_warning "Service accounts file not found: $SERVICE_ACCOUNTS_FILE"
-        print_info "The application will fall back to API lookup for service account IDs"
-        print_info "For better performance, run create-cc-service-accounts.sh first"
-    else
-        print_success "Service accounts file found: $SERVICE_ACCOUNTS_FILE"
-    fi
-    
-    # Check if files are valid JSON
-    if ! python3 -c "import json; json.load(open('$RBAC_FILE'))" 2>/dev/null; then
-        print_error "Invalid JSON in RBAC file: $RBAC_FILE"
-        exit 1
-    fi
-    
-    if [[ -f "$SERVICE_ACCOUNTS_FILE" ]] && ! python3 -c "import json; json.load(open('$SERVICE_ACCOUNTS_FILE'))" 2>/dev/null; then
-        print_error "Invalid JSON in service accounts file: $SERVICE_ACCOUNTS_FILE"
-        exit 1
-    fi
-    
-    print_info "Input files validated successfully"
+    print_success "Prerequisites check passed"
 }
 
 # Show file summary
@@ -218,12 +213,14 @@ show_file_summary() {
 }
 
 # Apply RBAC using Java API
-apply_rbac_java() {
-    print_processing "Applying RBAC role bindings using service account IDs from file..."
+apply_rbac_with_java() {
+    print_info "$RBAC_ICON Applying RBAC role bindings with Java..."
     
-    # Build Java command - use the correct class and always skip service accounts for RBAC-only script
-    local java_cmd="java -cp target/msk-to-confluent-cloud.jar com.confluent.utility.ConfluentCloudRBACApplicator"
-    java_cmd+=" --skip-service-accounts"  # Always skip service accounts for RBAC script
+    # Use the correct format for the RBAC applicator
+    local java_cmd="java -jar release/msk-to-confluent-cloud.jar apply"
+    
+    # Add arguments in the correct format
+    java_cmd+=" \"$RBAC_FILE\" \"$CONFIG_FILE\""
     
     if $DRY_RUN; then
         java_cmd+=" --dry-run"
@@ -233,23 +230,21 @@ apply_rbac_java() {
         java_cmd+=" --verbose"
     fi
     
-    if $VERBOSE; then
-        print_info "Executing: $java_cmd"
-    fi
+    print_verbose "Executing: $java_cmd"
     
-    # Execute the Java application
+    # Execute the Java command
     if eval "$java_cmd"; then
-        print_success "RBAC role bindings applied successfully"
+        print_success "RBAC application completed successfully"
         return 0
     else
-        print_error "RBAC role binding application failed"
+        print_error "RBAC application failed"
         return 1
     fi
 }
 
-# This function is now replaced by apply_rbac_java
+# This function is now replaced by apply_rbac_with_java
 apply_role_bindings() {
-    apply_rbac_java
+    apply_rbac_with_java
 }
 
 # Verify applied role bindings (handled by Java application)
@@ -258,10 +253,77 @@ verify_role_bindings() {
     print_info "Role binding verification is handled by the Java application"
 }
 
+# Convert ACLs to RBAC format
+convert_acls_to_rbac() {
+    print_processing "Converting MSK ACLs to RBAC format..."
+    
+    # Check if MSK ACLs file exists
+    local msk_acls_file="generated_jsons/msk_jsons/msk_acls.json"
+    if [[ ! -f "$msk_acls_file" ]]; then
+        print_error "MSK ACLs file not found: $msk_acls_file"
+        print_error "Please run extract-msk-metadata.sh first"
+        exit 1
+    fi
+    
+    # Always regenerate RBAC file to ensure it's up-to-date
+    print_info "Regenerating RBAC file from latest MSK ACLs..."
+    
+    # Read environment and cluster from config
+    local environment_id cluster_id
+    if [[ -f "$CONFIG_FILE" ]]; then
+        environment_id=$(grep -E '^confluent\.cloud\.environment=' "$CONFIG_FILE" | cut -d'=' -f2 | tr -d '"' || echo "")
+        cluster_id=$(grep -E '^confluent\.cloud\.cluster=' "$CONFIG_FILE" | cut -d'=' -f2 | tr -d '"' || echo "")
+    fi
+    
+    if [[ -z "$environment_id" ]] || [[ -z "$cluster_id" ]]; then
+        print_error "Environment ID and Cluster ID must be configured in $CONFIG_FILE"
+        print_error "Please add: confluent.cloud.environment=env-xxxxx and confluent.cloud.cluster=lkc-xxxxx"
+        exit 1
+    fi
+    
+    # Run the conversion
+    if $DRY_RUN; then
+        print_info "Would convert ACLs to RBAC format (dry run)"
+        print_info "Command: ./scripts/convert-acl-to-rbac.sh -e $environment_id -c $cluster_id"
+    else
+        # Always run the conversion to ensure fresh RBAC data
+        local convert_cmd="./scripts/convert-acl-to-rbac.sh -e $environment_id -c $cluster_id"
+        if $VERBOSE; then
+            convert_cmd+=" -v"
+        fi
+        
+        print_verbose "Running: $convert_cmd"
+        print_info "Converting ACLs to RBAC format (this may take a moment)..."
+        
+        if $VERBOSE; then
+            # Show output in verbose mode
+            if $convert_cmd; then
+                print_success "ACLs converted to RBAC format successfully"
+            else
+                print_error "Failed to convert ACLs to RBAC format"
+                exit 1
+            fi
+        else
+            # Suppress output in normal mode
+            if $convert_cmd >/dev/null 2>&1; then
+                print_success "ACLs converted to RBAC format successfully"
+            else
+                print_error "Failed to convert ACLs to RBAC format"
+                print_error "Run with -v flag to see detailed conversion output"
+                exit 1
+            fi
+        fi
+    fi
+}
+
 # Main execution
 main() {
     print_info "🔐 Confluent Cloud RBAC Role Binding Applicator"
     print_info "=============================================="
+    echo
+    
+    # Convert ACLs to RBAC format first
+    convert_acls_to_rbac
     echo
     
     # Show file summary

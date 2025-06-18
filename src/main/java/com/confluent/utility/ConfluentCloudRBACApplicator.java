@@ -436,14 +436,18 @@ public class ConfluentCloudRBACApplicator {
     private void createRoleBinding(ACLToRBACConverter.ConfluentCloudRoleBinding binding, 
                                   ConfluentCloudConfig config) throws ConfluentCloudException {
         
-        // Get service account ID from name
-        String serviceAccountId = getServiceAccountId(binding.principal);
-        if (serviceAccountId == null) {
-            throw new ConfluentCloudException("Service account not found: " + binding.principal);
+        // Use resource_id if available, otherwise get service account ID from name
+        String serviceAccountId;
+        if (binding.resource_id != null && !binding.resource_id.isEmpty()) {
+            serviceAccountId = binding.resource_id;
+            logger.info("     {} Using resource_id: '{}' -> 'User:{}'", BULLET, binding.principal, serviceAccountId);
+        } else {
+            serviceAccountId = getServiceAccountId(binding.principal);
+            if (serviceAccountId == null) {
+                throw new ConfluentCloudException("Service account not found: " + binding.principal);
+            }
+            logger.info("     {} Principal mapping: '{}' -> 'User:{}'", BULLET, binding.principal, serviceAccountId);
         }
-        
-        // Log the principal mapping for transparency
-        logger.info("     {} Principal mapping: '{}' -> 'User:{}'", BULLET, binding.principal, serviceAccountId);
         
         // Build CRN pattern based on resource type
         String crnPattern;

@@ -1,7 +1,0 @@
-# Ignore all credential files
-*.txt
-*.json
-*/
-
-# But allow this .gitignore file
-!.gitignore

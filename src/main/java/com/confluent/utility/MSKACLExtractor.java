@@ -9,6 +9,10 @@ import org.apache.kafka.clients.admin.DescribeAclsResult;
 import org.apache.kafka.clients.admin.DescribeConfigsResult;
 import org.apache.kafka.clients.admin.DescribeTopicsResult;
 import org.apache.kafka.clients.admin.ListTopicsResult;
+import org.apache.kafka.clients.admin.ListConsumerGroupsResult;
+import org.apache.kafka.clients.admin.DescribeConsumerGroupsResult;
+import org.apache.kafka.clients.admin.ConsumerGroupDescription;
+import org.apache.kafka.clients.admin.ConsumerGroupListing;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.acl.*;
 import org.apache.kafka.common.config.ConfigResource;
@@ -415,23 +419,85 @@ public class MSKACLExtractor {
     }
 
     /**
-     * Export ACLs and Topics to separate JSON files in generated_jsons folder
+     * List all consumer groups from the MSK cluster
      */
-    public void exportACLsAndTopicsToJSON(boolean includeMetadata) throws MSKACLExtractorException {
-        // Create output directory if it doesn't exist
-        java.io.File outputDir = new java.io.File("generated_jsons");
-        if (!outputDir.exists()) {
-            outputDir.mkdirs();
-            logger.info("Created output directory: generated_jsons");
+    public List<ConsumerGroupInfo> listConsumerGroups() throws MSKACLExtractorException {
+        if (adminClient == null) {
+            throw new MSKACLExtractorException("Not connected to cluster. Call connectToCluster() first.");
         }
         
-        // Export ACLs to generated_jsons/msk_jsons/msk_acls.json
+        try {
+            // List consumer groups
+            ListConsumerGroupsResult listResult = adminClient.listConsumerGroups();
+            Collection<ConsumerGroupListing> groupListings = listResult.all().get();
+            
+            if (groupListings.isEmpty()) {
+                logger.info("No consumer groups found in the cluster");
+                return new ArrayList<>();
+            }
+            
+            // Get group IDs for detailed description
+            Set<String> groupIds = groupListings.stream()
+                    .map(ConsumerGroupListing::groupId)
+                    .collect(java.util.stream.Collectors.toSet());
+            
+            // Describe consumer groups for detailed information
+            DescribeConsumerGroupsResult describeResult = adminClient.describeConsumerGroups(groupIds);
+            Map<String, ConsumerGroupDescription> groupDescriptions = describeResult.all().get();
+            
+            List<ConsumerGroupInfo> consumerGroups = new ArrayList<>();
+            
+            for (Map.Entry<String, ConsumerGroupDescription> entry : groupDescriptions.entrySet()) {
+                String groupId = entry.getKey();
+                ConsumerGroupDescription description = entry.getValue();
+                
+                ConsumerGroupInfo groupInfo = new ConsumerGroupInfo();
+                groupInfo.setGroupId(groupId);
+                groupInfo.setState(description.state().toString());
+                groupInfo.setCoordinator(description.coordinator() != null ? 
+                    description.coordinator().host() + ":" + description.coordinator().port() : "unknown");
+                
+                // Get member information
+                List<ConsumerGroupMemberInfo> members = new ArrayList<>();
+                description.members().forEach(member -> {
+                    ConsumerGroupMemberInfo memberInfo = new ConsumerGroupMemberInfo();
+                    memberInfo.setMemberId(member.consumerId());
+                    memberInfo.setClientId(member.clientId());
+                    memberInfo.setHost(member.host());
+                    memberInfo.setAssignedPartitions(member.assignment().topicPartitions().size());
+                    members.add(memberInfo);
+                });
+                groupInfo.setMembers(members);
+                groupInfo.setMemberCount(members.size());
+                
+                consumerGroups.add(groupInfo);
+            }
+            
+            logger.info("Retrieved {} consumer groups from the cluster", consumerGroups.size());
+            return consumerGroups;
+            
+        } catch (InterruptedException | ExecutionException e) {
+            logger.error("Failed to list consumer groups: {}", e.getMessage());
+            throw new MSKACLExtractorException("Failed to list consumer groups", e);
+        }
+    }
+
+    /**
+     * Export all MSK data (ACLs, Topics, Schemas, and Consumer Groups) to JSON files
+     */
+    public void exportACLsAndTopicsToJSON(boolean includeMetadata) throws MSKACLExtractorException {
+        createOutputDirectories();
+        
+        // Export ACLs
         exportACLsToJSON("generated_jsons/msk_jsons/msk_acls.json", includeMetadata);
         
-        // Export Topics to generated_jsons/msk_jsons/msk_topics.json
+        // Export Topics
         exportTopicsToJSON("generated_jsons/msk_jsons/msk_topics.json", includeMetadata);
         
-        // Export Schemas to generated_jsons/msk_jsons/msk_schemas.json
+        // Export Consumer Groups
+        exportConsumerGroupsToJSON("generated_jsons/msk_jsons/msk_consumer_groups.json", includeMetadata);
+        
+        // Export Schemas
         exportSchemasToJSON("generated_jsons/msk_jsons/msk_schemas.json", includeMetadata);
     }
     
@@ -496,6 +562,26 @@ public class MSKACLExtractor {
     }
     
     /**
+     * Export Consumer Groups to a JSON file
+     */
+    public void exportConsumerGroupsToJSON(String outputFile, boolean includeMetadata) throws MSKACLExtractorException {
+        List<ConsumerGroupInfo> consumerGroups = listConsumerGroups();
+        
+        Map<String, Object> exportData = new HashMap<>();
+        exportData.put("consumer_groups", consumerGroups);
+        exportData.put("consumer_group_count", consumerGroups.size());
+        exportData.put("exported_at", LocalDateTime.now().toString());
+        
+        if (includeMetadata && clusterInfo != null) {
+            Map<String, Object> metadata = createClusterMetadata();
+            exportData.put("cluster_metadata", metadata);
+        }
+        
+        writeJSONFile(outputFile, exportData);
+        logger.info("Successfully exported {} consumer groups to {}", consumerGroups.size(), outputFile);
+    }
+    
+    /**
      * Create cluster metadata object
      */
     private Map<String, Object> createClusterMetadata() {
@@ -547,6 +633,23 @@ public class MSKACLExtractor {
         }
     }
 
+    /**
+     * Create output directory structure for generated JSON files
+     */
+    private void createOutputDirectories() {
+        java.io.File mskDir = new java.io.File("generated_jsons/msk_jsons");
+        if (!mskDir.exists()) {
+            mskDir.mkdirs();
+            logger.info("Created output directory: generated_jsons/msk_jsons");
+        }
+        
+        java.io.File ccDir = new java.io.File("generated_jsons/cc_jsons");
+        if (!ccDir.exists()) {
+            ccDir.mkdirs();
+            logger.info("Created output directory: generated_jsons/cc_jsons");
+        }
+    }
+
     public static void main(String[] args) {
         Options options = createOptions();
         
@@ -561,7 +664,7 @@ public class MSKACLExtractor {
             
             String clusterArn = cmd.getOptionValue("cluster-arn");
             String region = cmd.getOptionValue("region", "us-east-1");
-            // Note: output-file option is ignored - files are automatically saved to generated_jsons/ folder
+            // Note: output-file option is ignored - files are automatically saved to generated_jsons/ folder automatically
             String securityProtocol = cmd.getOptionValue("security-protocol", "SSL");
             String saslMechanism = cmd.getOptionValue("sasl-mechanism");
             String saslUsername = cmd.getOptionValue("sasl-username");
@@ -591,6 +694,7 @@ public class MSKACLExtractor {
                 
                 System.out.println("✅ Successfully exported ACLs to generated_jsons/msk_jsons/msk_acls.json");
                 System.out.println("✅ Successfully exported Topics to generated_jsons/msk_jsons/msk_topics.json");
+                System.out.println("✅ Successfully exported Consumer Groups to generated_jsons/msk_jsons/msk_consumer_groups.json");
                 System.out.println("✅ Successfully exported Schemas to generated_jsons/msk_jsons/msk_schemas.json");
                 
             } finally {
