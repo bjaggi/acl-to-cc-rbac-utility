@@ -30,18 +30,51 @@ A comprehensive Java-based utility that extracts metadata from Amazon MSK (Manag
 
 ## 📋 Prerequisites
 
-- **Java 11 or higher** (Java 17 recommended)
-  - For Amazon Linux/EC2: `sudo yum install java-17-amazon-corretto`
-  - For Ubuntu/Debian: `sudo apt-get install openjdk-17-jdk`
-- **Maven 3.6 or higher** (only if you want to rebuild)
-  - For Amazon Linux: `sudo yum install maven`
-  - For Ubuntu/Debian: `sudo apt-get install maven`
-- **Confluent CLI** (for automated RBAC application)
-  - Install from: https://docs.confluent.io/confluent-cli/current/install.html
-- **AWS credentials configured** (via AWS CLI, environment variables, or IAM roles)
-  - Test with: `aws sts get-caller-identity`
-- **Network access to your MSK cluster**
-  - Ensure security groups allow connections from your IP
+### ✅ Required (Must Have)
+
+- **☕ Java 11 or higher** (Java 17 recommended)
+  ```bash
+  # Amazon Linux/EC2
+  sudo yum install java-17-amazon-corretto
+  
+  # Ubuntu/Debian
+  sudo apt-get install openjdk-17-jdk
+  
+  # Verify installation
+  java -version
+  ```
+
+- **🌐 Network Access to Confluent Cloud**
+  - HTTPS access to Confluent Cloud APIs (api.confluent.cloud)
+  - Access to your Confluent Cloud Kafka cluster endpoints
+  - Access to Schema Registry endpoints (if using schema migration)
+
+- **🔑 AWS Credentials** (for MSK access)
+  ```bash
+  # Test your AWS access
+  aws sts get-caller-identity
+  
+  # If not configured, set up AWS CLI
+  aws configure
+  ```
+
+- **🌐 Network Access to MSK**
+  - Your machine can reach MSK cluster (security groups/NACLs allow traffic)
+  - MSK cluster endpoints are accessible from your location
+
+### 🔧 Optional (Only if Customizing)
+
+- **🛠️ Maven 3.6+** (only needed if rebuilding the application)
+  ```bash
+  # Amazon Linux
+  sudo yum install maven
+  
+  # Ubuntu/Debian  
+  sudo apt-get install maven
+  
+  # Verify
+  mvn -version
+  ```
 
 ## ⚡ Quick Start - Complete Migration
 
