@@ -855,50 +855,6 @@ java -jar release/msk-acl-extractor.jar --help
 java -jar release/acl-to-rbac-converter.jar --help
 ```
 
-## 🔍 Troubleshooting
-
-### Common Issues
-
-1. **JAVA_HOME Not Set Error**
-   ```
-   The JAVA_HOME environment variable is not defined correctly
-   ```
-   **Solution:** Build scripts automatically detect and set JAVA_HOME
-   ```bash
-   export JAVA_HOME=/usr/lib/jvm/java-17-amazon-corretto
-   echo $JAVA_HOME && java -version
-   ```
-
-2. **SSL Keystore Loading Error**
-   ```
-   KafkaException: Failed to load SSL keystore of type JKS
-   ```
-   **Solution:** Application automatically handles invalid truststore paths
-
-3. **Wrong Bootstrap Server Port Error**
-   ```
-   Unexpected handshake request with client mechanism AWS_MSK_IAM
-   ```
-   **Solution:** Application automatically selects correct ports based on auth method
-
-4. **AWS Credentials Error**
-   ```bash
-   aws configure
-   aws sts get-caller-identity
-   ```
-
-5. **Confluent CLI Authentication Error**
-   ```bash
-   confluent login
-   # Or use automated script with API keys
-   ./scripts/apply-rbac-to-cc-auto.sh
-   ```
-
-6. **Schema Registry Access Denied**
-   - Ensure AWS credentials have Glue Schema Registry permissions
-   - Check if registries exist in the specified region
-   - Application gracefully handles missing registries
-
 ### Required AWS Permissions
 
 **For MSK:**
@@ -940,15 +896,3 @@ java -jar release/acl-to-rbac-converter.jar --help
 Check detailed logs in:
 - `logs/msk-acl-extractor.log`
 
-## 🚀 Migration Best Practices
-
-1. **Test First**: Always use `--dry-run` to preview changes
-2. **Incremental Migration**: Start with a subset of ACLs/topics
-3. **Verify Permissions**: Test access after applying role bindings
-4. **Monitor Logs**: Check both MSK and Confluent Cloud logs
-5. **Backup ACLs**: Keep a copy of original MSK ACLs
-6. **Service Account Keys**: Generate and store API keys for new service accounts
-
-## 📄 License
-
-This project is licensed under the Apache License 2.0.
