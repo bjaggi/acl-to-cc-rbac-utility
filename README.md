@@ -37,9 +37,6 @@ A comprehensive Java-based utility that extracts metadata from Amazon MSK (Manag
   # Amazon Linux/EC2
   sudo yum install java-17-amazon-corretto
   
-  # Ubuntu/Debian
-  sudo apt-get install openjdk-17-jdk
-  
   # Verify installation
   java -version
   ```
@@ -51,11 +48,14 @@ A comprehensive Java-based utility that extracts metadata from Amazon MSK (Manag
 
 - **🔑 AWS Credentials** (for MSK access)
   ```bash
-  # Test your AWS access
-  aws sts get-caller-identity
   
   # If not configured, set up AWS CLI
   aws configure
+
+
+  # Test your AWS access
+  aws sts get-caller-identity
+
   ```
 
 - **🌐 Network Access to MSK**
