@@ -92,41 +92,152 @@ chmod +x scripts/extract_msk_metadata/extract-msk-metadata.sh scripts/create_cc_
 **Note**: The utility comes with a pre-built JAR file in the `release/` folder, so building is optional unless you've made code changes.
 
 ### 2. **Configure MSK Connection**
+
+Create/edit the MSK configuration file in the project root:
+
 ```bash
-# Edit msk.config with your actual MSK cluster details
+# Copy sample configuration
+cp msk.config.sample msk.config
+
+# Edit with your MSK cluster details
 vi msk.config
 ```
 
+**Configuration Options:**
+
+**Option A: IAM Authentication (Recommended)**
+```properties
+# MSK Cluster ARN (REQUIRED)
+cluster.arn=arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123
+
+# AWS Region
+aws.region=us-east-1
+
+# IAM Authentication
+security.protocol=SASL_SSL
+sasl.mechanism=AWS_MSK_IAM
+sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required;
+sasl.client.callback.handler.class=software.amazon.msk.auth.iam.IAMClientCallbackHandler
+```
+
+**Option B: SSL Authentication**
+```properties
+cluster.arn=arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123
+aws.region=us-east-1
+security.protocol=SSL
+```
+
+**Option C: SCRAM Authentication**
+```properties
+cluster.arn=arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123
+aws.region=us-east-1
+security.protocol=SASL_SSL
+sasl.mechanism=SCRAM-SHA-256
+sasl.username=your-username
+sasl.password=your-password
+```
+
+**How to find your MSK Cluster ARN:**
+- AWS Console: MSK service → Select cluster → Copy ARN
+- AWS CLI: `aws kafka list-clusters`
+
 ### 3. **Configure Confluent Cloud Connection**
+
+Create the Confluent Cloud configuration file in the project root:
+
 ```bash
 # Create Confluent Cloud configuration
 vi ccloud.config
 ```
-Add your Confluent Cloud details:
+
+**Complete Configuration Template:**
 ```properties
-# Confluent Cloud Configuration
+# =============================================================================
+# CONFLUENT CLOUD CONFIGURATION
+# =============================================================================
+
+# Environment and Cluster Details
 confluent.cloud.environment=env-12345
 confluent.cloud.cluster=lkc-67890
+confluent.cloud.organization=your-org-id
 
-# Kafka API Keys (for topic operations)
+# =============================================================================
+# KAFKA API KEYS (for topic operations)
+# =============================================================================
 sasl.username=YOUR_KAFKA_API_KEY
 sasl.password=YOUR_KAFKA_API_SECRET
 bootstrap.servers=pkc-xxxxx.region.aws.confluent.cloud:9092
 security.protocol=SASL_SSL
 sasl.mechanisms=PLAIN
+sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="YOUR_KAFKA_API_KEY" password="YOUR_KAFKA_API_SECRET";
 
-# Cloud API Keys (for RBAC operations)
+# =============================================================================
+# CLOUD API KEYS (for RBAC operations)
+# =============================================================================
 confluent_cloud_key=YOUR_CLOUD_API_KEY
 confluent_cloud_secret=YOUR_CLOUD_API_SECRET
 
-# Schema Registry (for schema migration)
+# =============================================================================
+# SCHEMA REGISTRY (optional)
+# =============================================================================
 schema.registry.url=https://psrc-xxxxx.region.gcp.confluent.cloud
 schema.registry.basic.auth.user.info=SR_API_KEY:SR_API_SECRET
 ```
 
-**⚠️ Important**: You need **both** Kafka API keys AND Cloud API keys with proper permissions.
+**How to find your Confluent Cloud details:**
+- **Environment ID**: Visible in CC Console URL (`env-12345`)
+- **Cluster ID**: Visible in cluster URL (`lkc-67890`)
+- **Organization ID**: Administration → Billing & payment
 
-### 4. **Execute Migration Sequence**
+**⚠️ Critical**: You need **TWO types of API keys**:
+
+1. **Kafka API Keys** (for topic operations):
+   - Go to your Kafka cluster → API Keys tab
+   - Create cluster-scoped key with DeveloperRead/Operator permissions
+
+2. **Cloud API Keys** (for RBAC operations):
+   - Administration → Access → Service Accounts
+   - Create service account with OrganizationAdmin/EnvironmentAdmin role
+   - Generate API keys for the service account
+
+### 4. **Setup AWS Credentials**
+
+Configure AWS access for MSK cluster:
+
+```bash
+# Method 1: AWS CLI
+aws configure
+
+# Method 2: Environment variables
+export AWS_ACCESS_KEY_ID=your-access-key
+export AWS_SECRET_ACCESS_KEY=your-secret-key
+export AWS_DEFAULT_REGION=us-east-1
+
+# Verify access
+aws sts get-caller-identity
+```
+
+**Required AWS Permissions:**
+- `kafka:DescribeCluster`, `kafka:ListClusters`, `kafka:GetBootstrapBrokers`
+- `kafka-cluster:Connect`, `kafka-cluster:DescribeCluster`
+- `glue:GetRegistry`, `glue:ListRegistries`, `glue:GetSchema`, `glue:ListSchemas`
+
+### 5. **Verify Configuration**
+
+Test your connections before running migration:
+
+```bash
+# Test MSK connection
+java -jar release/msk-to-confluent-cloud.jar extract --cluster-arn "your-cluster-arn" --region "us-east-1" --dry-run
+
+# Test Confluent Cloud API access
+curl -u "YOUR_CLOUD_KEY:YOUR_CLOUD_SECRET" "https://api.confluent.cloud/org/v2/environments"
+
+# Secure your config files
+chmod 600 msk.config ccloud.config
+```
+
+### 6. **Execute Migration Sequence**
 
 **🚀 Start Here**: Run the first script to extract all MSK metadata:
 
