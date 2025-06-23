@@ -5,7 +5,9 @@ A comprehensive Java-based utility that extracts metadata from Amazon MSK (Manag
 ## 🚀 Features
 
 - ✅ **Complete MSK Metadata Extraction**: ACLs, Topics, Consumer Groups, and Schemas (all versions)
-- ✅ **Automated Schema Registry Integration**: AWS Glue Schema Registry support
+- ✅ **Automated Schema Registry Integration**: AWS Glue Schema Registry, Confluent Schema Registry, and Apicurio Registry support
+- ✅ **Multiple Schema Sources**: Support for AWS Glue, Confluent Schema Registry, Apicurio Registry, or no schemas
+- ✅ **Flexible Schema Registry Authentication**: Basic auth, API keys, Bearer tokens, mTLS, and no authentication
 - ✅ **Schema Migration**: Migrate schemas from AWS Glue to Confluent Cloud Schema Registry
 - ✅ **Consumer Group Analysis**: Extract and analyze consumer group information
 - ✅ **Confluent Cloud RBAC Conversion**: Convert MSK ACLs to CC role bindings
@@ -141,6 +143,199 @@ sasl.password=your-password
 - AWS Console: MSK service → Select cluster → Copy ARN
 - AWS CLI: `aws kafka list-clusters`
 
+### 2.5. **Configure Schema Registry (Optional)**
+
+The utility supports multiple schema sources for extracting schemas during MSK metadata extraction. Configure your schema source in the `msk.config` file:
+
+#### **Schema Source Options**
+
+When running the extraction, you must specify the source of schemas using the `--source-of-schemas` parameter:
+
+```bash
+# Extract with AWS Glue Schema Registry (default)
+./scripts/extract_msk_metadata/extract-msk-metadata.sh --source-of-schemas glue
+
+# Extract with Confluent Schema Registry
+./scripts/extract_msk_metadata/extract-msk-metadata.sh --source-of-schemas schemaregistry
+
+# Extract with Apicurio Registry
+./scripts/extract_msk_metadata/extract-msk-metadata.sh --source-of-schemas Apicurio
+
+# Extract without schemas
+./scripts/extract_msk_metadata/extract-msk-metadata.sh --source-of-schemas none
+```
+
+#### **Configuration for External Schema Registries**
+
+**Option A: AWS Glue Schema Registry (Default)**
+```properties
+# No additional configuration needed - uses AWS credentials
+# Schemas will be extracted from AWS Glue Schema Registry in the same region
+```
+
+**Option B: Confluent Schema Registry**
+```properties
+# Basic configuration (HTTP, no auth)
+schema.registry.url=http://localhost:8081
+schema.registry.auth.type=none
+
+# TLS/HTTPS configuration (encrypted transport, no client auth)
+schema.registry.url=https://schema-registry.company.com:8081
+schema.registry.auth.type=none
+
+# TLS with Basic Authentication
+schema.registry.url=https://schema-registry.company.com:8081
+schema.registry.auth.type=basic
+schema.registry.username=myuser
+schema.registry.password=mypassword
+
+# API Key Authentication (Confluent Cloud)
+schema.registry.url=https://psrc-xxxxx.us-east-2.aws.confluent.cloud
+schema.registry.auth.type=apikey
+schema.registry.api.key=SRXXXXXXXXXXXXXXX
+schema.registry.api.secret=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Bearer Token Authentication over TLS
+schema.registry.url=https://schema-registry.company.com:8081
+schema.registry.auth.type=bearer
+schema.registry.token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+# mTLS (Mutual TLS) Authentication
+schema.registry.url=https://secure-schema-registry.company.com:8081
+schema.registry.auth.type=mtls
+schema.registry.ssl.keystore=/path/to/client-keystore.jks
+schema.registry.ssl.keystore.password=keystorepassword
+schema.registry.ssl.truststore=/path/to/client-truststore.jks
+schema.registry.ssl.truststore.password=truststorepassword
+```
+
+**Option C: Apicurio Registry**
+```properties
+# Basic configuration (HTTP, no auth)
+schema.registry.url=http://localhost:8080
+schema.registry.auth.type=none
+
+# TLS/HTTPS configuration
+schema.registry.url=https://apicurio-registry.company.com:8443
+schema.registry.auth.type=none
+
+# TLS with Basic Authentication
+schema.registry.url=https://apicurio-registry.company.com:8443
+schema.registry.auth.type=basic
+schema.registry.username=admin
+schema.registry.password=password
+
+# Bearer Token Authentication over TLS (OAuth2/OIDC)
+schema.registry.url=https://apicurio-registry.company.com:8443
+schema.registry.auth.type=bearer
+schema.registry.token=your-oauth-token
+
+# mTLS Authentication for Apicurio
+schema.registry.url=https://secure-apicurio.company.com:8443
+schema.registry.auth.type=mtls
+schema.registry.ssl.keystore=/path/to/client-keystore.jks
+schema.registry.ssl.keystore.password=keystorepassword
+schema.registry.ssl.truststore=/path/to/client-truststore.jks
+schema.registry.ssl.truststore.password=truststorepassword
+```
+
+**Option D: No Schema Extraction**
+```properties
+# No schema registry configuration needed
+# Use --source-of-schemas none when running extraction
+```
+
+#### **Common Production Scenarios**
+
+**Enterprise Setup (TLS + Basic Auth)**
+```properties
+# Production schema registry with encrypted transport and basic auth
+schema.registry.url=https://schema-registry.company.com:8081
+schema.registry.auth.type=basic
+schema.registry.username=service-account
+schema.registry.password=secure-password
+```
+
+**High Security Setup (mTLS)**
+```properties
+# Maximum security with mutual TLS authentication
+schema.registry.url=https://secure-schema-registry.company.com:8081
+schema.registry.auth.type=mtls
+schema.registry.ssl.keystore=/etc/ssl/certs/client-keystore.jks
+schema.registry.ssl.keystore.password=keystore-password
+schema.registry.ssl.truststore=/etc/ssl/certs/truststore.jks
+schema.registry.ssl.truststore.password=truststore-password
+```
+
+**Cloud Provider Setup (Confluent Cloud)**
+```properties
+# Confluent Cloud Schema Registry with API keys
+schema.registry.url=https://psrc-12345.us-west-2.aws.confluent.cloud
+schema.registry.auth.type=apikey
+schema.registry.api.key=SR123ABCDEFGHIJKLMNO
+schema.registry.api.secret=abcdefghijklmnopqrstuvwxyz1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ12
+```
+
+#### **Complete MSK Configuration Example with Schema Registry**
+
+```properties
+# =============================================================================
+# MSK CLUSTER CONFIGURATION
+# =============================================================================
+cluster.arn=arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123
+region=us-east-1
+security.protocol=SASL_SSL
+sasl.mechanism=AWS_MSK_IAM
+
+# Basic settings
+include.metadata=true
+verbose=false
+
+# =============================================================================
+# SCHEMA REGISTRY CONFIGURATION (for --source-of-schemas schemaregistry/Apicurio)
+# =============================================================================
+
+# Confluent Schema Registry with API Key (Confluent Cloud)
+schema.registry.url=https://psrc-xxxxx.us-east-2.aws.confluent.cloud
+schema.registry.auth.type=apikey
+schema.registry.api.key=SRXXXXXXXXXXXXXXX
+schema.registry.api.secret=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Alternative: Local Schema Registry with Basic Auth
+# schema.registry.url=http://localhost:8081
+# schema.registry.auth.type=basic
+# schema.registry.username=admin
+# schema.registry.password=secret
+
+# Alternative: No Schema Registry
+# schema.registry.auth.type=none
+```
+
+#### **Authentication Types Reference**
+
+| Auth Type | Description | Required Parameters | Use Case |
+|-----------|-------------|-------------------|----------|
+| `none` | No authentication (HTTP/HTTPS) | None | Local/open registries, TLS-only |
+| `basic` | Basic HTTP authentication | `username`, `password` | Self-hosted registries |
+| `apikey` | API key authentication | `api.key`, `api.secret` | Confluent Cloud |
+| `bearer` | Bearer token authentication | `token` | OAuth2/OIDC-protected registries |
+| `mtls` | Mutual TLS authentication | `keystore`, `truststore`, passwords | Enterprise secure registries |
+
+#### **Transport Security Options**
+
+| Protocol | URL Scheme | Description | Security Level |
+|----------|------------|-------------|----------------|
+| **HTTP** | `http://` | Unencrypted transport | ⚠️ Low (dev only) |
+| **TLS/HTTPS** | `https://` | Encrypted transport | ✅ Good (production) |
+| **mTLS** | `https://` | Mutual certificate authentication | 🔐 High (enterprise) |
+
+#### **Schema Registry URLs by Provider**
+
+- **Confluent Cloud**: `https://psrc-xxxxx.region.provider.confluent.cloud`
+- **Self-hosted Confluent**: `http://schema-registry:8081` (default port)
+- **Apicurio Registry**: `http://apicurio:8080` (default port)
+- **AWS Glue**: No URL needed (uses AWS SDK)
+
 ### 3. **Configure Confluent Cloud Connection**
 
 Create the Confluent Cloud configuration file in the project root:
@@ -243,7 +438,19 @@ chmod 600 msk.config ccloud.config
 
 ```bash
 # STEP 1: Extract all MSK metadata (START HERE!)
-./scripts/extract_msk_metadata/extract-msk-metadata.sh
+# Choose your schema source:
+
+# Option A: Extract with AWS Glue Schema Registry (most common)
+./scripts/extract_msk_metadata/extract-msk-metadata.sh --source-of-schemas glue
+
+# Option B: Extract with Confluent Schema Registry
+./scripts/extract_msk_metadata/extract-msk-metadata.sh --source-of-schemas schemaregistry
+
+# Option C: Extract with Apicurio Registry
+./scripts/extract_msk_metadata/extract-msk-metadata.sh --source-of-schemas Apicurio
+
+# Option D: Extract without schemas
+./scripts/extract_msk_metadata/extract-msk-metadata.sh --source-of-schemas none
 ```
 
 **Then follow this sequence for complete migration:**
@@ -325,7 +532,14 @@ generated_jsons/
 
 **Extract ACLs, Topics, Principals, and Schemas + Auto-Convert to RBAC:**
 ```bash
-./scripts/extract_msk_metadata/extract-msk-metadata.sh
+# Required: Specify schema source
+./scripts/extract_msk_metadata/extract-msk-metadata.sh --source-of-schemas <source>
+
+# Examples:
+./scripts/extract_msk_metadata/extract-msk-metadata.sh --source-of-schemas glue
+./scripts/extract_msk_metadata/extract-msk-metadata.sh --source-of-schemas schemaregistry
+./scripts/extract_msk_metadata/extract-msk-metadata.sh --source-of-schemas Apicurio
+./scripts/extract_msk_metadata/extract-msk-metadata.sh --source-of-schemas none
 ```
 
 This script:
@@ -333,17 +547,20 @@ This script:
 - Extracts all ACLs from MSK cluster
 - Extracts all topics with configurations
 - Extracts unique principals from ACLs
-- Extracts all schemas from AWS Glue Schema Registry (all versions)
+- Extracts schemas from the specified source (AWS Glue, Schema Registry, Apicurio, or none)
 - **Automatically converts ACLs to Confluent Cloud RBAC format**
 - Outputs to `generated_jsons/` folder
 
 **Advanced Usage:**
 ```bash
-# Interactive mode with flexible configuration
-./extract-acls.sh --interactive
+# With verbose logging
+./scripts/extract_msk_metadata/extract-msk-metadata.sh --source-of-schemas glue --verbose
 
-# Direct command line
-./extract-acls.sh --cluster-arn arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123
+# Help and options
+./scripts/extract_msk_metadata/extract-msk-metadata.sh --help
+
+# Direct Java application call (if needed)
+java -jar release/msk-to-confluent-cloud.jar extract --source-of-schemas glue --cluster-arn arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123 --region us-east-1
 ```
 
 ### RBAC Conversion
@@ -568,8 +785,8 @@ This script automatically creates and organizes all necessary credentials for yo
 
 | Authentication Method | Security Protocol | Port | Bootstrap Server Type |
 |-----------------------|-------------------|------|----------------------|
-| **SSL** (Default)     | `SSL`            | 9094 | TLS                  |
-| **IAM** (Recommended) | `SASL_SSL`       | 9098 | SASL_IAM            |
+| **SSL**               | `SSL`            | 9094 | TLS                  |
+| **IAM**               | `SASL_SSL`       | 9098 | SASL_IAM            |
 | **SCRAM**             | `SASL_SSL`       | 9096 | SASL_SCRAM          |
 | **Plaintext**         | `PLAINTEXT`      | 9092 | Plaintext           |
 
@@ -843,7 +1060,7 @@ The automated RBAC application includes:
 ### Available Scripts
 
 - `build.sh` - Build the Java application using Maven
-- `scripts/extract_msk_metadata/extract-msk-metadata.sh` - Extract MSK metadata (ACLs, topics, schemas, principals)
+- `scripts/extract_msk_metadata/extract-msk-metadata.sh --source-of-schemas <source>` - Extract MSK metadata (ACLs, topics, schemas, principals)
 - `scripts/convert-acl-to-rbac.sh` - Convert ACLs to Confluent Cloud RBAC format
 - `scripts/apply-rbac-to-cc-auto.sh` - Automatically apply RBAC to Confluent Cloud
 - `scripts/create_cc_infra/create-cc-rbac.sh` - RBAC creation in Confluent Cloud

@@ -1,0 +1,53 @@
+# MSK Configuration with Schema Registry Authentication Examples
+# ============================================================
+
+# MSK Cluster Configuration (Required)
+cluster.arn=arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/abc-123
+region=us-east-1
+security.protocol=SASL_SSL
+sasl.mechanism=AWS_MSK_IAM
+
+# Basic Settings
+include.metadata=true
+verbose=false
+
+# Schema Registry Configuration Examples
+# ======================================
+
+# Example 1: No Authentication (default)
+# schema.registry.url=http://localhost:8081
+# schema.registry.auth.type=none
+
+# Example 2: TLS/HTTPS (encrypted transport, no client auth)
+# schema.registry.url=https://schema-registry.company.com:8081
+# schema.registry.auth.type=none
+
+# Example 3: TLS with Basic Authentication
+# schema.registry.url=https://schema-registry.company.com:8081
+# schema.registry.auth.type=basic
+# schema.registry.username=myuser
+# schema.registry.password=mypassword
+
+# Example 4: API Key Authentication (Confluent Cloud)
+# schema.registry.url=https://psrc-xxxxx.us-east-2.aws.confluent.cloud
+# schema.registry.auth.type=apikey
+# schema.registry.api.key=SRXXXXXXXXXXXXXXX
+# schema.registry.api.secret=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Example 5: Bearer Token Authentication over TLS
+# schema.registry.url=https://schema-registry.company.com:8081
+# schema.registry.auth.type=bearer
+# schema.registry.token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+# Example 6: mTLS Authentication (Mutual TLS with client certificates)
+# schema.registry.url=https://secure-schema-registry.company.com:8081
+# schema.registry.auth.type=mtls
+# schema.registry.ssl.keystore=/etc/ssl/certs/client-keystore.jks
+# schema.registry.ssl.keystore.password=keystorepassword
+# schema.registry.ssl.truststore=/etc/ssl/certs/client-truststore.jks
+# schema.registry.ssl.truststore.password=truststorepassword
+
+# Active Configuration (uncomment one of the examples above)
+# For this example, using no authentication:
+schema.registry.url=http://localhost:8081
+schema.registry.auth.type=none 

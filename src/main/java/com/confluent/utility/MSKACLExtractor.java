@@ -32,9 +32,24 @@ import software.amazon.awssdk.core.exception.SdkClientException;
 
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.FileInputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.security.KeyStore;
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
+import java.util.Base64;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLSession;
 
 /**
  * MSK ACL Extractor Utility
@@ -52,10 +67,36 @@ public class MSKACLExtractor {
     private final GlueClient glueClient;
     private AdminClient adminClient;
     private ClusterInfo clusterInfo;
+    private final String schemaRegistryUrl;
+    private final String schemaRegistryAuthType;
+    private final String schemaRegistryUsername;
+    private final String schemaRegistryPassword;
+    private final String schemaRegistryApiKey;
+    private final String schemaRegistryApiSecret;
+    private final String schemaRegistryToken;
+    private final String schemaRegistrySslKeystore;
+    private final String schemaRegistrySslKeystorePassword;
+    private final String schemaRegistrySslTruststore;
+    private final String schemaRegistrySslTruststorePassword;
 
-    public MSKACLExtractor(String clusterArn, String region) {
+    public MSKACLExtractor(String clusterArn, String region, String schemaRegistryUrl, 
+                          String schemaRegistryAuthType, String schemaRegistryUsername, String schemaRegistryPassword,
+                          String schemaRegistryApiKey, String schemaRegistryApiSecret, String schemaRegistryToken,
+                          String schemaRegistrySslKeystore, String schemaRegistrySslKeystorePassword,
+                          String schemaRegistrySslTruststore, String schemaRegistrySslTruststorePassword) {
         this.clusterArn = clusterArn;
         this.region = region;
+        this.schemaRegistryUrl = schemaRegistryUrl;
+        this.schemaRegistryAuthType = schemaRegistryAuthType;
+        this.schemaRegistryUsername = schemaRegistryUsername;
+        this.schemaRegistryPassword = schemaRegistryPassword;
+        this.schemaRegistryApiKey = schemaRegistryApiKey;
+        this.schemaRegistryApiSecret = schemaRegistryApiSecret;
+        this.schemaRegistryToken = schemaRegistryToken;
+        this.schemaRegistrySslKeystore = schemaRegistrySslKeystore;
+        this.schemaRegistrySslKeystorePassword = schemaRegistrySslKeystorePassword;
+        this.schemaRegistrySslTruststore = schemaRegistrySslTruststore;
+        this.schemaRegistrySslTruststorePassword = schemaRegistrySslTruststorePassword;
         this.mskClient = KafkaClient.builder()
                 .region(Region.of(region))
                 .credentialsProvider(DefaultCredentialsProvider.create())
@@ -310,7 +351,23 @@ public class MSKACLExtractor {
     /**
      * List all schemas from AWS Glue Schema Registry
      */
-    public List<SchemaInfo> listSchemas() throws MSKACLExtractorException {
+    public List<SchemaInfo> listSchemas(String sourceOfSchemas) throws MSKACLExtractorException {
+        switch (sourceOfSchemas.toLowerCase()) {
+            case "glue":
+                return listSchemasFromGlue();
+            case "schemaregistry":
+                return listSchemasFromSchemaRegistry();
+            case "apicurio":
+                return listSchemasFromApicurio();
+            case "none":
+                logger.info("Schema extraction disabled (source: none)");
+                return new ArrayList<>();
+            default:
+                throw new MSKACLExtractorException("Invalid schema source: " + sourceOfSchemas);
+        }
+    }
+
+    public List<SchemaInfo> listSchemasFromGlue() throws MSKACLExtractorException {
         List<SchemaInfo> allSchemas = new ArrayList<>();
         
         try {
@@ -419,6 +476,93 @@ public class MSKACLExtractor {
     }
 
     /**
+     * List all schemas from Confluent Schema Registry
+     */
+    public List<SchemaInfo> listSchemasFromSchemaRegistry() throws MSKACLExtractorException {
+        List<SchemaInfo> allSchemas = new ArrayList<>();
+        
+        try {
+            logger.info("Connecting to Schema Registry at: {}", schemaRegistryUrl);
+            
+            // Get all subjects
+            List<String> subjects = getSchemaRegistrySubjects();
+            
+            for (String subject : subjects) {
+                try {
+                    // Get all versions for this subject
+                    List<Integer> versions = getSchemaRegistryVersions(subject);
+                    
+                    for (Integer version : versions) {
+                        try {
+                            SchemaInfo schemaInfo = getSchemaRegistrySchema(subject, version);
+                            if (schemaInfo != null) {
+                                allSchemas.add(schemaInfo);
+                            }
+                        } catch (Exception e) {
+                            logger.warn("Failed to get schema for subject {} version {}: {}", 
+                                       subject, version, e.getMessage());
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.warn("Failed to get versions for subject {}: {}", subject, e.getMessage());
+                }
+            }
+            
+            logger.info("Retrieved {} schemas from Schema Registry", allSchemas.size());
+            return allSchemas;
+            
+        } catch (Exception e) {
+            logger.error("Failed to list schemas from Schema Registry: {}", e.getMessage());
+            throw new MSKACLExtractorException("Failed to list schemas from Schema Registry", e);
+        }
+    }
+
+    /**
+     * List all schemas from Apicurio Registry
+     */
+    public List<SchemaInfo> listSchemasFromApicurio() throws MSKACLExtractorException {
+        List<SchemaInfo> allSchemas = new ArrayList<>();
+        
+        try {
+            logger.info("Connecting to Apicurio Registry at: {}", schemaRegistryUrl);
+            
+            // Get all artifacts from Apicurio
+            List<Map<String, Object>> artifacts = getApicurioArtifacts();
+            
+            for (Map<String, Object> artifact : artifacts) {
+                try {
+                    String artifactId = (String) artifact.get("id");
+                    String groupId = (String) artifact.get("groupId");
+                    
+                    // Get all versions for this artifact
+                    List<Map<String, Object>> versions = getApicurioVersions(groupId, artifactId);
+                    
+                    for (Map<String, Object> versionMeta : versions) {
+                        try {
+                            SchemaInfo schemaInfo = getApicurioSchema(groupId, artifactId, versionMeta);
+                            if (schemaInfo != null) {
+                                allSchemas.add(schemaInfo);
+                            }
+                        } catch (Exception e) {
+                            logger.warn("Failed to get schema for artifact {}/{} version {}: {}", 
+                                       groupId, artifactId, versionMeta.get("version"), e.getMessage());
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.warn("Failed to get versions for artifact {}: {}", artifact.get("id"), e.getMessage());
+                }
+            }
+            
+            logger.info("Retrieved {} schemas from Apicurio Registry", allSchemas.size());
+            return allSchemas;
+            
+        } catch (Exception e) {
+            logger.error("Failed to list schemas from Apicurio Registry: {}", e.getMessage());
+            throw new MSKACLExtractorException("Failed to list schemas from Apicurio Registry", e);
+        }
+    }
+
+    /**
      * List all consumer groups from the MSK cluster
      */
     public List<ConsumerGroupInfo> listConsumerGroups() throws MSKACLExtractorException {
@@ -485,7 +629,7 @@ public class MSKACLExtractor {
     /**
      * Export all MSK data (ACLs, Topics, Schemas, and Consumer Groups) to JSON files
      */
-    public void exportACLsAndTopicsToJSON(boolean includeMetadata) throws MSKACLExtractorException {
+    public void exportACLsAndTopicsToJSON(boolean includeMetadata, String sourceOfSchemas) throws MSKACLExtractorException {
         createOutputDirectories();
         
         // Export ACLs
@@ -497,8 +641,8 @@ public class MSKACLExtractor {
         // Export Consumer Groups
         exportConsumerGroupsToJSON("generated_jsons/msk_jsons/msk_consumer_groups.json", includeMetadata);
         
-        // Export Schemas
-        exportSchemasToJSON("generated_jsons/msk_jsons/msk_schemas.json", includeMetadata);
+        // Export Schemas based on source
+        exportSchemasToJSON("generated_jsons/msk_jsons/msk_schemas.json", includeMetadata, sourceOfSchemas);
     }
     
     /**
@@ -544,12 +688,13 @@ public class MSKACLExtractor {
     /**
      * Export Schemas to a JSON file
      */
-    public void exportSchemasToJSON(String outputFile, boolean includeMetadata) throws MSKACLExtractorException {
-        List<SchemaInfo> schemas = listSchemas();
+    public void exportSchemasToJSON(String outputFile, boolean includeMetadata, String sourceOfSchemas) throws MSKACLExtractorException {
+        List<SchemaInfo> schemas = listSchemas(sourceOfSchemas);
         
         Map<String, Object> exportData = new HashMap<>();
         exportData.put("schemas", schemas);
         exportData.put("schema_count", schemas.size());
+        exportData.put("schema_source", sourceOfSchemas);
         exportData.put("exported_at", LocalDateTime.now().toString());
         
         if (includeMetadata && clusterInfo != null) {
@@ -558,7 +703,7 @@ public class MSKACLExtractor {
         }
         
         writeJSONFile(outputFile, exportData);
-        logger.info("Successfully exported {} schemas to {}", schemas.size(), outputFile);
+        logger.info("Successfully exported {} schemas from {} to {}", schemas.size(), sourceOfSchemas, outputFile);
     }
     
     /**
@@ -634,6 +779,214 @@ public class MSKACLExtractor {
     }
 
     /**
+     * HTTP helper methods for Schema Registry and Apicurio
+     */
+    private String makeHttpRequest(String url, String method) throws IOException {
+        HttpURLConnection connection = null;
+        try {
+            URL requestUrl = new URL(url);
+            connection = (HttpURLConnection) requestUrl.openConnection();
+            
+            // Configure SSL/TLS for HTTPS connections
+            if (connection instanceof HttpsURLConnection) {
+                HttpsURLConnection httpsConnection = (HttpsURLConnection) connection;
+                configureSSL(httpsConnection);
+            }
+            
+            connection.setRequestMethod(method);
+            connection.setRequestProperty("Content-Type", "application/json");
+            
+            // Add authentication based on auth type
+            if (schemaRegistryAuthType != null) {
+                switch (schemaRegistryAuthType.toLowerCase()) {
+                    case "basic":
+                        if (schemaRegistryUsername != null && !schemaRegistryUsername.trim().isEmpty()) {
+                            String auth = schemaRegistryUsername + ":" + (schemaRegistryPassword != null ? schemaRegistryPassword : "");
+                            String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8));
+                            connection.setRequestProperty("Authorization", "Basic " + encodedAuth);
+                        }
+                        break;
+                    case "apikey":
+                        if (schemaRegistryApiKey != null && !schemaRegistryApiKey.trim().isEmpty()) {
+                            String auth = schemaRegistryApiKey + ":" + (schemaRegistryApiSecret != null ? schemaRegistryApiSecret : "");
+                            String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8));
+                            connection.setRequestProperty("Authorization", "Basic " + encodedAuth);
+                        }
+                        break;
+                    case "bearer":
+                        if (schemaRegistryToken != null && !schemaRegistryToken.trim().isEmpty()) {
+                            connection.setRequestProperty("Authorization", "Bearer " + schemaRegistryToken);
+                        }
+                        break;
+                    case "mtls":
+                        // mTLS is configured in configureSSL method
+                        logger.info("Using mTLS authentication with client certificates");
+                        break;
+                    case "none":
+                    default:
+                        // No authentication
+                        break;
+                }
+            }
+            
+            int responseCode = connection.getResponseCode();
+            if (responseCode >= 200 && responseCode < 300) {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
+                    StringBuilder response = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        response.append(line);
+                    }
+                    return response.toString();
+                }
+            } else {
+                throw new IOException("HTTP " + responseCode + " error for URL: " + url);
+            }
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+    
+    /**
+     * Configure SSL/TLS for HTTPS connections including mTLS support
+     */
+    private void configureSSL(HttpsURLConnection connection) throws IOException {
+        try {
+            if ("mtls".equals(schemaRegistryAuthType) && 
+                schemaRegistrySslKeystore != null && !schemaRegistrySslKeystore.trim().isEmpty()) {
+                
+                // Create SSL context with keystore and truststore for mTLS
+                SSLContext sslContext = SSLContext.getInstance("TLS");
+                
+                // Load keystore (client certificate)
+                KeyStore keyStore = KeyStore.getInstance("JKS");
+                try (FileInputStream keystoreFile = new FileInputStream(schemaRegistrySslKeystore)) {
+                    char[] keystorePassword = schemaRegistrySslKeystorePassword != null ? 
+                                             schemaRegistrySslKeystorePassword.toCharArray() : new char[0];
+                    keyStore.load(keystoreFile, keystorePassword);
+                }
+                
+                KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+                char[] keystorePassword = schemaRegistrySslKeystorePassword != null ? 
+                                         schemaRegistrySslKeystorePassword.toCharArray() : new char[0];
+                keyManagerFactory.init(keyStore, keystorePassword);
+                
+                // Load truststore if provided
+                TrustManagerFactory trustManagerFactory = null;
+                if (schemaRegistrySslTruststore != null && !schemaRegistrySslTruststore.trim().isEmpty()) {
+                    KeyStore trustStore = KeyStore.getInstance("JKS");
+                    try (FileInputStream truststoreFile = new FileInputStream(schemaRegistrySslTruststore)) {
+                        char[] truststorePassword = schemaRegistrySslTruststorePassword != null ? 
+                                                   schemaRegistrySslTruststorePassword.toCharArray() : new char[0];
+                        trustStore.load(truststoreFile, truststorePassword);
+                    }
+                    
+                    trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+                    trustManagerFactory.init(trustStore);
+                }
+                
+                // Initialize SSL context
+                sslContext.init(
+                    keyManagerFactory.getKeyManagers(),
+                    trustManagerFactory != null ? trustManagerFactory.getTrustManagers() : null,
+                    new SecureRandom()
+                );
+                
+                connection.setSSLSocketFactory(sslContext.getSocketFactory());
+                logger.info("mTLS SSL context configured with keystore: {}", schemaRegistrySslKeystore);
+                
+            } else {
+                // Standard TLS/HTTPS - use default SSL context
+                // This handles regular HTTPS connections without client certificates
+                logger.debug("Using default SSL context for TLS connection");
+            }
+            
+            // Optional: Disable hostname verification for development (not recommended for production)
+            // connection.setHostnameVerifier((hostname, session) -> true);
+            
+        } catch (Exception e) {
+            logger.error("Failed to configure SSL/TLS: {}", e.getMessage());
+            throw new IOException("SSL configuration failed", e);
+        }
+    }
+    
+    @SuppressWarnings("unchecked")
+    private List<String> getSchemaRegistrySubjects() throws IOException {
+        String response = makeHttpRequest(schemaRegistryUrl + "/subjects", "GET");
+        ObjectMapper mapper = new ObjectMapper();
+        return mapper.readValue(response, List.class);
+    }
+    
+    @SuppressWarnings("unchecked")
+    private List<Integer> getSchemaRegistryVersions(String subject) throws IOException {
+        String encodedSubject = java.net.URLEncoder.encode(subject, StandardCharsets.UTF_8);
+        String response = makeHttpRequest(schemaRegistryUrl + "/subjects/" + encodedSubject + "/versions", "GET");
+        ObjectMapper mapper = new ObjectMapper();
+        return mapper.readValue(response, List.class);
+    }
+    
+    @SuppressWarnings("unchecked")
+    private SchemaInfo getSchemaRegistrySchema(String subject, Integer version) throws IOException {
+        String encodedSubject = java.net.URLEncoder.encode(subject, StandardCharsets.UTF_8);
+        String response = makeHttpRequest(schemaRegistryUrl + "/subjects/" + encodedSubject + "/versions/" + version, "GET");
+        
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, Object> schemaData = mapper.readValue(response, Map.class);
+        
+        SchemaInfo schemaInfo = new SchemaInfo();
+        schemaInfo.setSchemaId(String.valueOf(schemaData.get("id")));
+        schemaInfo.setSchemaName(subject);
+        schemaInfo.setVersionNumber(version.longValue());
+        schemaInfo.setSchemaDefinition((String) schemaData.get("schema"));
+        schemaInfo.setRegistryName("confluent-schema-registry");
+        schemaInfo.setDataFormat((String) schemaData.get("schemaType"));
+        
+        return schemaInfo;
+    }
+    
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> getApicurioArtifacts() throws IOException {
+        String response = makeHttpRequest(schemaRegistryUrl + "/apis/registry/v2/search/artifacts", "GET");
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, Object> result = mapper.readValue(response, Map.class);
+        return (List<Map<String, Object>>) result.get("artifacts");
+    }
+    
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> getApicurioVersions(String groupId, String artifactId) throws IOException {
+        String encodedGroupId = java.net.URLEncoder.encode(groupId != null ? groupId : "default", StandardCharsets.UTF_8);
+        String encodedArtifactId = java.net.URLEncoder.encode(artifactId, StandardCharsets.UTF_8);
+        String response = makeHttpRequest(schemaRegistryUrl + "/apis/registry/v2/groups/" + encodedGroupId + 
+                                        "/artifacts/" + encodedArtifactId + "/versions", "GET");
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, Object> result = mapper.readValue(response, Map.class);
+        return (List<Map<String, Object>>) result.get("versions");
+    }
+    
+    @SuppressWarnings("unchecked")
+    private SchemaInfo getApicurioSchema(String groupId, String artifactId, Map<String, Object> versionMeta) throws IOException {
+        String encodedGroupId = java.net.URLEncoder.encode(groupId != null ? groupId : "default", StandardCharsets.UTF_8);
+        String encodedArtifactId = java.net.URLEncoder.encode(artifactId, StandardCharsets.UTF_8);
+        String version = String.valueOf(versionMeta.get("version"));
+        
+        String response = makeHttpRequest(schemaRegistryUrl + "/apis/registry/v2/groups/" + encodedGroupId + 
+                                        "/artifacts/" + encodedArtifactId + "/versions/" + version, "GET");
+        
+        SchemaInfo schemaInfo = new SchemaInfo();
+        schemaInfo.setSchemaId(artifactId);
+        schemaInfo.setSchemaName(artifactId);
+        schemaInfo.setVersionNumber(Long.valueOf(version));
+        schemaInfo.setSchemaDefinition(response);
+        schemaInfo.setRegistryName("apicurio-registry");
+        schemaInfo.setDataFormat((String) versionMeta.get("type"));
+        schemaInfo.setCreatedTime((String) versionMeta.get("createdOn"));
+        
+        return schemaInfo;
+    }
+
+    /**
      * Create output directory structure for generated JSON files
      */
     private void createOutputDirectories() {
@@ -669,6 +1022,18 @@ public class MSKACLExtractor {
             String saslMechanism = cmd.getOptionValue("sasl-mechanism");
             String saslUsername = cmd.getOptionValue("sasl-username");
             String saslPassword = cmd.getOptionValue("sasl-password");
+            String sourceOfSchemas = cmd.getOptionValue("source-of-schemas");
+            String schemaRegistryUrl = cmd.getOptionValue("schema-registry-url");
+            String schemaRegistryAuthType = cmd.getOptionValue("schema-registry-auth-type", "none");
+            String schemaRegistryUsername = cmd.getOptionValue("schema-registry-username");
+            String schemaRegistryPassword = cmd.getOptionValue("schema-registry-password");
+            String schemaRegistryApiKey = cmd.getOptionValue("schema-registry-api-key");
+            String schemaRegistryApiSecret = cmd.getOptionValue("schema-registry-api-secret");
+            String schemaRegistryToken = cmd.getOptionValue("schema-registry-token");
+            String schemaRegistrySslKeystore = cmd.getOptionValue("schema-registry-ssl-keystore");
+            String schemaRegistrySslKeystorePassword = cmd.getOptionValue("schema-registry-ssl-keystore-password");
+            String schemaRegistrySslTruststore = cmd.getOptionValue("schema-registry-ssl-truststore");
+            String schemaRegistrySslTruststorePassword = cmd.getOptionValue("schema-registry-ssl-truststore-password");
             boolean noMetadata = cmd.hasOption("no-metadata");
             boolean verbose = cmd.hasOption("verbose");
             
@@ -678,11 +1043,37 @@ public class MSKACLExtractor {
                 System.exit(1);
             }
             
+            if (sourceOfSchemas == null) {
+                System.err.println("Error: --source-of-schemas is required");
+                System.err.println("Valid values: glue, schemaregistry, Apicurio, none");
+                printHelp(options);
+                System.exit(1);
+            }
+            
+            // Validate source-of-schemas value
+            if (!Arrays.asList("glue", "schemaregistry", "Apicurio", "none").contains(sourceOfSchemas)) {
+                System.err.println("Error: Invalid value for --source-of-schemas: " + sourceOfSchemas);
+                System.err.println("Valid values: glue, schemaregistry, Apicurio, none");
+                System.exit(1);
+            }
+            
+            // Validate schema registry configuration if needed
+            if (("schemaregistry".equals(sourceOfSchemas) || "Apicurio".equals(sourceOfSchemas)) && 
+                (schemaRegistryUrl == null || schemaRegistryUrl.trim().isEmpty())) {
+                System.err.println("Error: --schema-registry-url is required when using --source-of-schemas " + sourceOfSchemas);
+                System.err.println("Please provide the Schema Registry URL (e.g., http://localhost:8081)");
+                System.exit(1);
+            }
+            
             if (verbose) {
                 System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "debug");
             }
             
-            MSKACLExtractor extractor = new MSKACLExtractor(clusterArn, region);
+            MSKACLExtractor extractor = new MSKACLExtractor(clusterArn, region, schemaRegistryUrl, 
+                                                                      schemaRegistryAuthType, schemaRegistryUsername, schemaRegistryPassword,
+                                                                      schemaRegistryApiKey, schemaRegistryApiSecret, schemaRegistryToken,
+                                                                      schemaRegistrySslKeystore, schemaRegistrySslKeystorePassword,
+                                                                      schemaRegistrySslTruststore, schemaRegistrySslTruststorePassword);
             
             try {
                 logger.info("Connecting to MSK cluster...");
@@ -690,7 +1081,7 @@ public class MSKACLExtractor {
                 extractor.connectToCluster(securityProtocol, saslMechanism, saslUsername, saslPassword);
                 
                 logger.info("Exporting ACLs, Topics, and Schemas...");
-                extractor.exportACLsAndTopicsToJSON(!noMetadata);
+                extractor.exportACLsAndTopicsToJSON(!noMetadata, sourceOfSchemas);
                 
                 System.out.println("✅ Successfully exported ACLs to generated_jsons/msk_jsons/msk_acls.json");
                 System.out.println("✅ Successfully exported Topics to generated_jsons/msk_jsons/msk_topics.json");
@@ -756,6 +1147,79 @@ public class MSKACLExtractor {
                 .longOpt("sasl-password")
                 .hasArg()
                 .desc("SASL password if required")
+                .build());
+        
+        options.addOption(org.apache.commons.cli.Option.builder()
+                .longOpt("source-of-schemas")
+                .hasArg()
+                .required()
+                .desc("Source of schemas to extract from. Valid values: glue, schemaregistry, Apicurio, none")
+                .build());
+        
+        options.addOption(org.apache.commons.cli.Option.builder()
+                .longOpt("schema-registry-url")
+                .hasArg()
+                .desc("URL of the Schema Registry (required for schemaregistry/Apicurio sources)")
+                .build());
+        
+        options.addOption(org.apache.commons.cli.Option.builder()
+                .longOpt("schema-registry-auth-type")
+                .hasArg()
+                .desc("Authentication type: none, basic, apikey, bearer, mtls (default: none)")
+                .build());
+        
+        options.addOption(org.apache.commons.cli.Option.builder()
+                .longOpt("schema-registry-username")
+                .hasArg()
+                .desc("Username for basic authentication")
+                .build());
+        
+        options.addOption(org.apache.commons.cli.Option.builder()
+                .longOpt("schema-registry-password")
+                .hasArg()
+                .desc("Password for basic authentication")
+                .build());
+        
+        options.addOption(org.apache.commons.cli.Option.builder()
+                .longOpt("schema-registry-api-key")
+                .hasArg()
+                .desc("API key for authentication")
+                .build());
+        
+        options.addOption(org.apache.commons.cli.Option.builder()
+                .longOpt("schema-registry-api-secret")
+                .hasArg()
+                .desc("API secret for authentication")
+                .build());
+        
+        options.addOption(org.apache.commons.cli.Option.builder()
+                .longOpt("schema-registry-token")
+                .hasArg()
+                .desc("Bearer token for authentication")
+                .build());
+        
+        options.addOption(org.apache.commons.cli.Option.builder()
+                .longOpt("schema-registry-ssl-keystore")
+                .hasArg()
+                .desc("Path to SSL keystore file for mTLS")
+                .build());
+        
+        options.addOption(org.apache.commons.cli.Option.builder()
+                .longOpt("schema-registry-ssl-keystore-password")
+                .hasArg()
+                .desc("Password for SSL keystore")
+                .build());
+        
+        options.addOption(org.apache.commons.cli.Option.builder()
+                .longOpt("schema-registry-ssl-truststore")
+                .hasArg()
+                .desc("Path to SSL truststore file for mTLS")
+                .build());
+        
+        options.addOption(org.apache.commons.cli.Option.builder()
+                .longOpt("schema-registry-ssl-truststore-password")
+                .hasArg()
+                .desc("Password for SSL truststore")
                 .build());
         
         options.addOption(org.apache.commons.cli.Option.builder()

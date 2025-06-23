@@ -42,7 +42,11 @@ This script reads MSK cluster configuration from msk.config file and extracts:
 - Cluster metadata
 - Automatically converts ACLs to Confluent Cloud RBAC format → generated_jsons/cc_jsons/cc_rbac.json
 
-Usage: $0 [OPTIONS]
+Usage: $0 --source-of-schemas <source> [OPTIONS]
+
+Required Parameters:
+    --source-of-schemas <source>    Source of schemas to extract from
+                                   Valid values: glue, schemaregistry, Apicurio, none
 
 Options:
     -h, --help      Show this help message
@@ -62,6 +66,27 @@ Configuration:
         sasl.password       - Password for SASL authentication
         include.metadata    - Include cluster metadata (default: true)
         verbose            - Enable verbose logging (default: false)
+        
+    Schema Registry settings (required for --source-of-schemas schemaregistry/Apicurio):
+        schema.registry.url                    - URL of the Schema Registry (e.g., http://localhost:8081)
+        schema.registry.auth.type             - Authentication type: none, basic, apikey, bearer, mtls (default: none)
+        
+        # Basic Authentication
+        schema.registry.username              - Username for basic authentication
+        schema.registry.password              - Password for basic authentication
+        
+        # API Key Authentication (Confluent Cloud)
+        schema.registry.api.key               - API key for authentication
+        schema.registry.api.secret            - API secret for authentication
+        
+        # Bearer Token Authentication
+        schema.registry.token                 - Bearer token for authentication
+        
+        # mTLS Authentication
+        schema.registry.ssl.keystore          - Path to SSL keystore file
+        schema.registry.ssl.keystore.password - Password for SSL keystore
+        schema.registry.ssl.truststore        - Path to SSL truststore file
+        schema.registry.ssl.truststore.password - Password for SSL truststore
 
 Output Files:
     generated_jsons/msk_jsons/msk_acls.json          - All ACLs from the MSK cluster
@@ -71,11 +96,14 @@ Output Files:
     generated_jsons/cc_jsons/cc_rbac.json           - Confluent Cloud RBAC role bindings (auto-generated)
 
 Examples:
-    # Extract ACLs, topics, and consumer groups using config file
-    $0
+    # Extract ACLs, topics, and consumer groups using config file with Glue Schema Registry
+    $0 --source-of-schemas glue
     
-    # Extract with verbose logging
-    $0 --verbose
+    # Extract with verbose logging and no schema extraction
+    $0 --source-of-schemas none --verbose
+    
+    # Extract with schema registry as source
+    $0 --source-of-schemas schemaregistry
 
 Requirements:
     - Java 11 or higher
@@ -88,6 +116,7 @@ EOF
 
 # Parse command line arguments
 VERBOSE_OVERRIDE=""
+SOURCE_OF_SCHEMAS=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         -h|--help)
@@ -98,6 +127,16 @@ while [[ $# -gt 0 ]]; do
             VERBOSE_OVERRIDE="true"
             shift
             ;;
+        --source-of-schemas)
+            if [[ -n "$2" ]]; then
+                SOURCE_OF_SCHEMAS="$2"
+                shift 2
+            else
+                print_error "--source-of-schemas requires a value"
+                show_help
+                exit 1
+            fi
+            ;;
         *)
             print_error "Unknown option: $1"
             show_help
@@ -105,6 +144,26 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Validate required parameters
+if [[ -z "$SOURCE_OF_SCHEMAS" ]]; then
+    print_error "--source-of-schemas is required"
+    print_error "Valid values: glue, schemaregistry, Apicurio, none"
+    print_error "Use --help for detailed usage information"
+    exit 1
+fi
+
+# Validate source-of-schemas value
+case "$SOURCE_OF_SCHEMAS" in
+    glue|schemaregistry|Apicurio|none)
+        print_info "Schema source: $SOURCE_OF_SCHEMAS"
+        ;;
+    *)
+        print_error "Invalid value for --source-of-schemas: $SOURCE_OF_SCHEMAS"
+        print_error "Valid values are: glue, schemaregistry, Apicurio, none"
+        exit 1
+        ;;
+esac
 
 # Function to read configuration from msk.config
 read_config() {
@@ -133,6 +192,17 @@ read_config() {
     SASL_PASSWORD=""
     INCLUDE_METADATA="true"
     VERBOSE="false"
+    SCHEMA_REGISTRY_URL=""
+    SCHEMA_REGISTRY_AUTH_TYPE=""
+    SCHEMA_REGISTRY_USERNAME=""
+    SCHEMA_REGISTRY_PASSWORD=""
+    SCHEMA_REGISTRY_API_KEY=""
+    SCHEMA_REGISTRY_API_SECRET=""
+    SCHEMA_REGISTRY_TOKEN=""
+    SCHEMA_REGISTRY_SSL_KEYSTORE=""
+    SCHEMA_REGISTRY_SSL_KEYSTORE_PASSWORD=""
+    SCHEMA_REGISTRY_SSL_TRUSTSTORE=""
+    SCHEMA_REGISTRY_SSL_TRUSTSTORE_PASSWORD=""
     
     # Read configuration file
     while IFS='=' read -r key value; do
@@ -170,6 +240,39 @@ read_config() {
             verbose)
                 VERBOSE="$value"
                 ;;
+            schema.registry.url)
+                SCHEMA_REGISTRY_URL="$value"
+                ;;
+            schema.registry.auth.type)
+                SCHEMA_REGISTRY_AUTH_TYPE="$value"
+                ;;
+            schema.registry.username)
+                SCHEMA_REGISTRY_USERNAME="$value"
+                ;;
+            schema.registry.password)
+                SCHEMA_REGISTRY_PASSWORD="$value"
+                ;;
+            schema.registry.api.key)
+                SCHEMA_REGISTRY_API_KEY="$value"
+                ;;
+            schema.registry.api.secret)
+                SCHEMA_REGISTRY_API_SECRET="$value"
+                ;;
+            schema.registry.token)
+                SCHEMA_REGISTRY_TOKEN="$value"
+                ;;
+            schema.registry.ssl.keystore)
+                SCHEMA_REGISTRY_SSL_KEYSTORE="$value"
+                ;;
+            schema.registry.ssl.keystore.password)
+                SCHEMA_REGISTRY_SSL_KEYSTORE_PASSWORD="$value"
+                ;;
+            schema.registry.ssl.truststore)
+                SCHEMA_REGISTRY_SSL_TRUSTSTORE="$value"
+                ;;
+            schema.registry.ssl.truststore.password)
+                SCHEMA_REGISTRY_SSL_TRUSTSTORE_PASSWORD="$value"
+                ;;
         esac
     done < "$config_file"
     
@@ -185,12 +288,69 @@ read_config() {
         exit 1
     fi
     
+    # Validate schema registry configuration if needed
+    if [[ "$SOURCE_OF_SCHEMAS" == "schemaregistry" || "$SOURCE_OF_SCHEMAS" == "Apicurio" ]]; then
+        if [[ -z "$SCHEMA_REGISTRY_URL" ]]; then
+            print_error "schema.registry.url is required in msk.config when using --source-of-schemas $SOURCE_OF_SCHEMAS"
+            print_error "Please add: schema.registry.url=http://your-schema-registry:8081"
+            exit 1
+        fi
+        
+        # Set default auth type if not specified
+        if [[ -z "$SCHEMA_REGISTRY_AUTH_TYPE" ]]; then
+            SCHEMA_REGISTRY_AUTH_TYPE="none"
+        fi
+        
+        # Validate auth type and required parameters
+        case "$SCHEMA_REGISTRY_AUTH_TYPE" in
+            none)
+                print_info "Schema Registry authentication: none"
+                ;;
+            basic)
+                if [[ -z "$SCHEMA_REGISTRY_USERNAME" ]]; then
+                    print_error "schema.registry.username is required when auth.type=basic"
+                    exit 1
+                fi
+                print_info "Schema Registry authentication: basic (username: $SCHEMA_REGISTRY_USERNAME)"
+                ;;
+            apikey)
+                if [[ -z "$SCHEMA_REGISTRY_API_KEY" ]]; then
+                    print_error "schema.registry.api.key is required when auth.type=apikey"
+                    exit 1
+                fi
+                print_info "Schema Registry authentication: API key"
+                ;;
+            bearer)
+                if [[ -z "$SCHEMA_REGISTRY_TOKEN" ]]; then
+                    print_error "schema.registry.token is required when auth.type=bearer"
+                    exit 1
+                fi
+                print_info "Schema Registry authentication: bearer token"
+                ;;
+            mtls)
+                if [[ -z "$SCHEMA_REGISTRY_SSL_KEYSTORE" ]]; then
+                    print_error "schema.registry.ssl.keystore is required when auth.type=mtls"
+                    exit 1
+                fi
+                print_info "Schema Registry authentication: mTLS"
+                ;;
+            *)
+                print_error "Invalid schema.registry.auth.type: $SCHEMA_REGISTRY_AUTH_TYPE"
+                print_error "Valid values: none, basic, apikey, bearer, mtls"
+                exit 1
+                ;;
+        esac
+    fi
+    
     print_info "Configuration loaded successfully"
     print_info "Cluster ARN: $CLUSTER_ARN"
     print_info "Region: $REGION"
     print_info "Security Protocol: $SECURITY_PROTOCOL"
     if [[ -n "$SASL_MECHANISM" ]]; then
         print_info "SASL Mechanism: $SASL_MECHANISM"
+    fi
+    if [[ -n "$SCHEMA_REGISTRY_URL" ]]; then
+        print_info "Schema Registry URL: $SCHEMA_REGISTRY_URL"
     fi
 }
 
@@ -301,6 +461,7 @@ run_extraction() {
     JAVA_CMD="$JAVA_CMD --cluster-arn \"$CLUSTER_ARN\""
     JAVA_CMD="$JAVA_CMD --region \"$REGION\""
     JAVA_CMD="$JAVA_CMD --security-protocol \"$SECURITY_PROTOCOL\""
+    JAVA_CMD="$JAVA_CMD --source-of-schemas \"$SOURCE_OF_SCHEMAS\""
     
     # Add optional parameters
     if [[ -n "$SASL_MECHANISM" ]]; then
@@ -321,6 +482,51 @@ run_extraction() {
     
     if [[ "$VERBOSE" == "true" ]]; then
         JAVA_CMD="$JAVA_CMD --verbose"
+    fi
+    
+    # Add schema registry parameters if provided
+    if [[ -n "$SCHEMA_REGISTRY_URL" ]]; then
+        JAVA_CMD="$JAVA_CMD --schema-registry-url \"$SCHEMA_REGISTRY_URL\""
+    fi
+    
+    if [[ -n "$SCHEMA_REGISTRY_AUTH_TYPE" ]]; then
+        JAVA_CMD="$JAVA_CMD --schema-registry-auth-type \"$SCHEMA_REGISTRY_AUTH_TYPE\""
+    fi
+    
+    if [[ -n "$SCHEMA_REGISTRY_USERNAME" ]]; then
+        JAVA_CMD="$JAVA_CMD --schema-registry-username \"$SCHEMA_REGISTRY_USERNAME\""
+    fi
+    
+    if [[ -n "$SCHEMA_REGISTRY_PASSWORD" ]]; then
+        JAVA_CMD="$JAVA_CMD --schema-registry-password \"$SCHEMA_REGISTRY_PASSWORD\""
+    fi
+    
+    if [[ -n "$SCHEMA_REGISTRY_API_KEY" ]]; then
+        JAVA_CMD="$JAVA_CMD --schema-registry-api-key \"$SCHEMA_REGISTRY_API_KEY\""
+    fi
+    
+    if [[ -n "$SCHEMA_REGISTRY_API_SECRET" ]]; then
+        JAVA_CMD="$JAVA_CMD --schema-registry-api-secret \"$SCHEMA_REGISTRY_API_SECRET\""
+    fi
+    
+    if [[ -n "$SCHEMA_REGISTRY_TOKEN" ]]; then
+        JAVA_CMD="$JAVA_CMD --schema-registry-token \"$SCHEMA_REGISTRY_TOKEN\""
+    fi
+    
+    if [[ -n "$SCHEMA_REGISTRY_SSL_KEYSTORE" ]]; then
+        JAVA_CMD="$JAVA_CMD --schema-registry-ssl-keystore \"$SCHEMA_REGISTRY_SSL_KEYSTORE\""
+    fi
+    
+    if [[ -n "$SCHEMA_REGISTRY_SSL_KEYSTORE_PASSWORD" ]]; then
+        JAVA_CMD="$JAVA_CMD --schema-registry-ssl-keystore-password \"$SCHEMA_REGISTRY_SSL_KEYSTORE_PASSWORD\""
+    fi
+    
+    if [[ -n "$SCHEMA_REGISTRY_SSL_TRUSTSTORE" ]]; then
+        JAVA_CMD="$JAVA_CMD --schema-registry-ssl-truststore \"$SCHEMA_REGISTRY_SSL_TRUSTSTORE\""
+    fi
+    
+    if [[ -n "$SCHEMA_REGISTRY_SSL_TRUSTSTORE_PASSWORD" ]]; then
+        JAVA_CMD="$JAVA_CMD --schema-registry-ssl-truststore-password \"$SCHEMA_REGISTRY_SSL_TRUSTSTORE_PASSWORD\""
     fi
     
     if [[ "$VERBOSE" == "true" ]]; then
