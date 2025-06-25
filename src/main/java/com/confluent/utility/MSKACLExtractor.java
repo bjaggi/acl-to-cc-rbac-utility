@@ -942,6 +942,8 @@ public class MSKACLExtractor {
         schemaInfo.setSchemaDefinition((String) schemaData.get("schema"));
         schemaInfo.setRegistryName("confluent-schema-registry");
         schemaInfo.setDataFormat((String) schemaData.get("schemaType"));
+        // Set status to AVAILABLE for active schemas in Confluent Schema Registry
+        schemaInfo.setStatus("AVAILABLE");
         
         return schemaInfo;
     }
@@ -982,6 +984,8 @@ public class MSKACLExtractor {
         schemaInfo.setRegistryName("apicurio-registry");
         schemaInfo.setDataFormat((String) versionMeta.get("type"));
         schemaInfo.setCreatedTime((String) versionMeta.get("createdOn"));
+        // Set status to AVAILABLE for active schemas in Apicurio Registry
+        schemaInfo.setStatus("AVAILABLE");
         
         return schemaInfo;
     }
